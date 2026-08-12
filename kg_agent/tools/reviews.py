@@ -15,20 +15,18 @@ class ReviewTools:
         context: ToolContext,
         reviewer: SemanticReviewer | None,
     ) -> None:
-        """绑定当前片段和可选的独立语义审查器。"""
         self.context = context
         self.reviewer = reviewer
 
     @property
     def available(self) -> bool:
-        """返回当前工具集是否配置了独立审查器。"""
         return self.reviewer is not None
 
     def review_entity_types(
         self,
         entities: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """结合局部原文批量审查实体类型，协议失败由审查器内部重试。"""
+        """Batch-review entity types with local text; protocol failures retry inside the reviewer."""
         if not entities:
             return success(
                 reviews=[],
@@ -98,7 +96,7 @@ class ReviewTools:
                 "review_errors": batch["errors"],
             }
             if "model_output" in batch:
-                # 多次内部重试仍失败时，仅发送最后响应的有界前缀。
+                # After internal retries fail, expose only a bounded prefix of the last model output.
                 details["model_output"] = batch["model_output"]
             return failure(
                 "PARTIAL_ENTITY_REVIEW",
@@ -116,7 +114,6 @@ class ReviewTools:
         )
 
     def list_review_warnings(self) -> dict[str, Any]:
-        """列出当前片段全部尚未处理的独立审查分歧。"""
         warnings = sorted(
             self.context.workspace.review_warnings.values(),
             key=lambda warning: warning["warning_id"],
@@ -128,7 +125,7 @@ class ReviewTools:
         warning_id: str,
         reason: str,
     ) -> dict[str, Any]:
-        """在核对原文后显式确认保留当前实体分类。"""
+        """After checking the source text, explicitly keep the current entity classification."""
         normalized_reason = reason.strip()
         if len(normalized_reason) < 8:
             return failure(
@@ -159,7 +156,6 @@ class ReviewTools:
         )
 
     def _find_entity(self, name: str, entity_type: str) -> Any:
-        """按名称和类型查找当前片段实体，失败时返回工具错误。"""
         entity = next(
             (
                 current
@@ -177,7 +173,6 @@ class ReviewTools:
         entity: Any,
         review: dict[str, Any],
     ) -> dict[str, Any]:
-        """将一条实体类型审查结果更新到当前警告状态。"""
         key = f"entity_type:{entity.entity_id}"
         warning = None
         if not review["should_extract"]:
@@ -228,7 +223,7 @@ def _local_context(
     radius: int = 160,
     occurrence_limit: int = 3,
 ) -> str:
-    """返回实体前几个出现位置附近的原文，用于实体类型审查。"""
+    """Return source snippets around the entity's first occurrences for type review."""
     search_names = (
         [member for member in name.split("|") if member]
         if "|" in name and name not in text
@@ -254,5 +249,5 @@ def _local_context(
         ]
         for position, name_length in occurrences
     ]
-    # 重叠窗口可能完全相同；去重后可减少批量审查提示长度。
+    # Overlapping windows may be identical; dedupe to shrink batch review prompts.
     return "\n…\n".join(dict.fromkeys(segments))

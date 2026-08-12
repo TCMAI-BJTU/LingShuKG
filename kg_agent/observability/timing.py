@@ -21,7 +21,7 @@ _PRINT_LOCK = Lock()
 
 @contextmanager
 def timing_context(**fields: object) -> Iterator[None]:
-    """为当前线程内的嵌套耗时日志附加文件、chunk 等公共字段。"""
+    """Attach shared file/chunk fields to nested timing logs on this thread."""
     token = _TIMING_FIELDS.set({**_TIMING_FIELDS.get(), **fields})
     try:
         yield
@@ -34,7 +34,7 @@ def log_slow_operation(
     operation: str,
     **fields: object,
 ) -> Iterator[None]:
-    """测量代码块耗时，并仅在超过两秒时向标准错误输出一行日志。"""
+    """Time a block and emit one stderr line only when it exceeds two seconds."""
     started_at = perf_counter()
     try:
         yield
@@ -51,13 +51,13 @@ def log_slow_operation(
             )
             if details:
                 message = f"{message} {details}"
-            # 多线程只允许整行写入，避免不同 chunk 的耗时日志互相穿插。
+            # Write whole log lines atomically so multi-thread timing logs do not interleave.
             with _PRINT_LOCK:
                 print(message, file=sys.stderr, flush=True)
 
 
 def log_event(event: str, **fields: object) -> None:
-    """向标准错误输出一条带线程上下文的原子事件日志。"""
+    """Write one atomic stderr event line with thread context."""
     merged_fields = {**_TIMING_FIELDS.get(), **fields}
     details = " ".join(
         f"{name}={_format_field(value)}"
@@ -71,7 +71,6 @@ def log_event(event: str, **fields: object) -> None:
 
 
 def _format_field(value: object) -> str:
-    """将日志字段格式化为紧凑且可区分空格的单行文本。"""
     if isinstance(value, (str, dict, list, tuple)):
         return json.dumps(value, ensure_ascii=False)
     return str(value)

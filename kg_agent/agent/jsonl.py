@@ -11,7 +11,7 @@ def decode_jsonl_objects(
     item_label: str,
     skip_blank_lines: bool = False,
 ) -> tuple[list[tuple[int, dict[str, Any]]], list[dict[str, Any]]]:
-    """逐行解码 JSON 对象，并按调用方要求处理纯空白行。"""
+    """Decode JSON objects line by line; blank-line policy is caller-controlled."""
     content = str(raw or "").strip()
     if not content:
         return [], [

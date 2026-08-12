@@ -10,7 +10,7 @@ SYMPTOM_GROUP_SEPARATOR = "|"
 
 
 def normalize_entity_name(name: str, entity_type: str) -> str:
-    """清理实体名称；症状群额外清理每个竖线分隔成员的首尾空白。"""
+    """Normalize entity names; for symptom groups, trim each pipe-separated member."""
     normalized = name.strip()
     if (
         entity_type != SYMPTOM_GROUP_ENTITY_TYPE
@@ -28,7 +28,7 @@ def entity_evidence_error(
     entity_type: str,
     text: str,
 ) -> str | None:
-    """忽略排版空白和零宽字符校验原文证据。"""
+    """Check textual evidence while ignoring layout whitespace and zero-width chars."""
     comparable_text = _normalize_evidence_value(text)
     if entity_type != SYMPTOM_GROUP_ENTITY_TYPE:
         comparable_name = _normalize_evidence_value(name)
@@ -55,7 +55,6 @@ def entity_evidence_error(
 
 
 def _normalize_evidence_value(value: str) -> str:
-    """统一 Unicode 形式并删除空白及不可见格式字符。"""
     normalized = unicodedata.normalize("NFKC", value)
     return "".join(
         character

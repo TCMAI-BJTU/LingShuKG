@@ -1,4 +1,4 @@
-"""PDF 页面渲染、空白页检测与 Qwen 视觉 OCR。"""
+"""PDF page render, blank detection, and Qwen vision OCR."""
 
 import base64
 import os
@@ -13,7 +13,7 @@ from .text_cleaning import clean_ocr_output
 
 
 def clear_local_proxy() -> None:
-    """确保访问本机 vLLM 时不经过系统代理。"""
+    """Ensure local vLLM traffic bypasses system proxies."""
     for proxy_key in (
         "http_proxy",
         "https_proxy",
@@ -56,7 +56,7 @@ def pdf_page_to_png_bytes(
 
 
 def is_blank_page(page: fitz.Page) -> bool:
-    """使用低分辨率灰度图判断页面是否基本空白。"""
+    """Detect near-blank pages via low-res grayscale ink/contrast."""
     rect = page.rect
     margin_x = rect.width * config.BLANK_MARGIN_RATIO
     margin_y = rect.height * config.BLANK_MARGIN_RATIO
@@ -108,7 +108,7 @@ def ocr_image_png(
     prompt: str = config.OCR_PROMPT,
     max_output_tokens: int = config.MAX_OUTPUT_TOKENS,
 ) -> tuple[str, str | None, bool]:
-    """调用 Qwen3.6-27B 识别单张 PNG。"""
+    """OCR one PNG via Qwen3.6-27B; returns (text, finish_reason, abnormal)."""
     image_base64 = base64.b64encode(png_bytes).decode("ascii")
     data_url = f"data:image/png;base64,{image_base64}"
     response = client.chat.completions.create(

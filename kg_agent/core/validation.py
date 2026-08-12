@@ -12,8 +12,8 @@ def validate_workspace(
     workspace: ChunkWorkspace,
     schema: GraphSchema,
 ) -> list[ValidationIssue]:
-    """校验当前工作区的实体和关系。"""
-    # 此处只做可确定的结构校验；医学语义正确性由独立审查和 Agent 复核。
+    """Validate entities and relations in the current workspace."""
+    # Structural checks only; medical semantics rely on independent review and the agent.
     issues: list[ValidationIssue] = []
     entity_keys: set[tuple[str, str]] = set()
     for entity in workspace.entities.values():
@@ -41,7 +41,7 @@ def validate_workspace(
                 )
             )
         key = (entity.name, entity.entity_type)
-        # 当前工具按 name + type 定位实体，因此一个 chunk 内必须保持唯一。
+        # Tools locate entities by name+type, so uniqueness is required within a chunk.
         if key in entity_keys:
             issues.append(
                 ValidationIssue("DUPLICATE_ENTITY", "当前片段存在重复实体", entity.entity_id)
@@ -83,7 +83,7 @@ def validate_workspace(
             relation.predicate,
             relation.object_entity_id,
         )
-        # 关系去重使用数据库最终保存的头实体、谓词、尾实体三元组。
+        # Relation dedup uses the persisted (head, predicate, tail) triple.
         if key in relation_keys:
             issues.append(
                 ValidationIssue(

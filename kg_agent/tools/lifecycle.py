@@ -11,11 +11,9 @@ from .tool_context import ToolContext
 
 class LifecycleTools:
     def __init__(self, context: ToolContext) -> None:
-        """绑定当前片段工具上下文。"""
         self.context = context
 
     def validate_chunk(self) -> dict[str, Any]:
-        """执行提交前完整工作区校验。"""
         issues = validate_workspace(self.context.workspace, self.context.schema)
         self.context.mark_validated(not issues)
         return success(
@@ -27,7 +25,7 @@ class LifecycleTools:
         )
 
     def confirm_empty_chunk(self, reason: str) -> dict[str, Any]:
-        """显式确认当前片段没有可抽取实体和关系。"""
+        """Explicitly confirm the chunk has no extractable entities or relations."""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         workspace = self.context.workspace
@@ -40,7 +38,7 @@ class LifecycleTools:
         return success(status="empty_confirmed", reason=normalized_reason)
 
     def submit_chunk(self) -> dict[str, Any]:
-        """校验并将当前片段原子提交到数据库。"""
+        """Validate and atomically commit the chunk to the database."""
         if self.context.committed:
             return success(status="already_committed")
         workspace = self.context.workspace
@@ -51,7 +49,7 @@ class LifecycleTools:
                 warnings=list(workspace.review_warnings.values()),
             )
         if workspace.validated_revision != workspace.revision:
-            # revision 不一致说明 validate 后又发生了修改，旧校验结果不可复用。
+            # Revision mismatch means the workspace changed after validate; old validation is stale.
             return failure(
                 "CHUNK_NOT_VALIDATED",
                 "提交前必须对当前工作区版本调用 validate_chunk",
@@ -73,7 +71,7 @@ class LifecycleTools:
             )
         inserted = self.context.store.commit_chunk(workspace)
         self.context.committed = True
-        # SQLite 已成为最终状态，草稿缓存不再需要保留。
+        # SQLite is authoritative after commit; drop the draft cache.
         self.context.cache.delete(
             self.context.cache_namespace,
             self.context.workspace.source_id,

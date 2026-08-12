@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def load_cache_namespace(path: Path | str, model: str) -> str:
-    """读取指定模型的稳定缓存命名空间；未配置时使用确定性的模型命名空间。"""
+    """Load a model's stable cache namespace, or a deterministic default if unset."""
     namespace_path = Path(path)
     if not namespace_path.is_file():
         return _default_cache_namespace(model)
@@ -17,5 +17,5 @@ def load_cache_namespace(path: Path | str, model: str) -> str:
 
 
 def _default_cache_namespace(model: str) -> str:
-    """为没有历史状态的模型生成不依赖 Schema 的稳定缓存命名空间。"""
+    """Build a Schema-independent stable cache namespace for models without prior state."""
     return f"model:{model}"

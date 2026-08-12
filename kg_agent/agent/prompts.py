@@ -8,7 +8,7 @@ from ..core.schema import GraphSchema
 from ..tools.specs import build_tool_specs
 
 
-# 内部使用的 get_chunk_context 不写入提示词，减少模型无关信息。
+# Omit internal get_chunk_context from prompts to reduce irrelevant tool surface.
 MODEL_TOOL_NAMES = {
     "get_workspace_summary",
     "list_entities",
@@ -28,7 +28,7 @@ MODEL_TOOL_NAMES = {
 
 
 def build_system_prompt(schema: GraphSchema) -> str:
-    """构建仅包含抽取决策所需 Schema、工具和流程的系统提示词。"""
+    """Build the system prompt with Schema, tools, and extraction workflow only."""
     entities = "\n".join(
         _format_entity_type(schema, entity_type)
         for entity_type in schema.entity_types
@@ -89,7 +89,7 @@ def build_system_prompt(schema: GraphSchema) -> str:
 
 
 def build_observations(results: list[tuple[str, dict]]) -> str:
-    """将本轮全部工具响应合并为一个 Observation 数组。"""
+    """Merge this round's tool responses into one Observation array."""
     payload = _merge_observation_items(
         [
             _observation_item(tool, result)
@@ -97,7 +97,7 @@ def build_observations(results: list[tuple[str, dict]]) -> str:
         ]
     )
     if any(_observation_failed(tool, result) for tool, result in results):
-        # JSONL 批次允许部分成功，失败后提醒 Agent 先读取真实工作区再补救。
+        # JSONL batches may partially succeed; nudge the agent to read the real workspace before recovery.
         payload.append(
             {
                 "tool": "recovery_hint",
@@ -116,7 +116,7 @@ def build_observations(results: list[tuple[str, dict]]) -> str:
 
 
 def build_parse_feedback(error: str) -> str:
-    """构建动作解析失败后的纠错反馈。"""
+    """Build corrective feedback after action-parse failure."""
     return f"""✿OBSERVATION✿
 tool=protocol_error
 {error}。
@@ -131,13 +131,11 @@ ACTION 仅接受 JSONL：每个完整 JSON 对象必须压缩在一个物理行�
 
 
 def build_result(result: dict) -> str:
-    """将最终提交结果格式化为 ReAct Result。"""
     payload = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
     return f"✿RESULT✿\n{payload}"
 
 
 def _format_tool(function: dict) -> str:
-    """将工具定义及完整参数约束格式化为提示词。"""
     parameters = function["parameters"]
     properties = parameters["properties"]
     required = set(parameters["required"])
@@ -150,14 +148,12 @@ def _format_tool(function: dict) -> str:
 
 
 def _observation_failed(tool: str, result: dict) -> bool:
-    """判断 Observation 是否需要追加工作区恢复提示。"""
     return not result.get("ok") or (
         tool == "validate_chunk" and not result.get("valid", False)
     )
 
 
 def _observation_item(tool: str, result: dict) -> dict:
-    """构造工具 Observation，并为审查类工具添加 Agent 提示。"""
     item = {
         "tool": tool,
         "result": _compact_observation_result(tool, result),
@@ -169,12 +165,12 @@ def _observation_item(tool: str, result: dict) -> dict:
 
 
 def _compact_observation_result(tool: str, result: dict) -> dict:
-    """删除主 Agent 已知或可由摘要确定的成功结果字段。"""
+    """Drop success fields the agent already knows or can infer from the summary."""
     compacted = dict(result)
     if not result.get("ok"):
         return compacted
     if tool in {"list_entities", "list_relations", "list_review_warnings"}:
-        # 工具执行后紧随的 WORKSPACE 已包含同一份完整数据。
+        # The following WORKSPACE snapshot already includes the same full payload.
         return {"ok": True, "status": "workspace_refreshed"}
     if tool == "review_entity_types":
         reviews = compacted.pop("reviews", [])
@@ -200,7 +196,7 @@ def _compact_observation_result(tool: str, result: dict) -> dict:
     if tool == "validate_chunk":
         if not compacted.get("errors"):
             compacted.pop("errors", None)
-        # 警告详情也由 WORKSPACE 统一提供，Observation 只保留数量。
+        # Warning details live in WORKSPACE; Observation keeps only the count.
         compacted.pop("review_warnings", None)
     if tool == "confirm_empty_chunk":
         compacted.pop("reason", None)
@@ -208,7 +204,7 @@ def _compact_observation_result(tool: str, result: dict) -> dict:
 
 
 def _merge_observation_items(items: list[dict]) -> list[dict]:
-    """合并连续同名工具结果，并去重同组内重复的 Agent 提示。"""
+    """Merge consecutive same-named tool results and dedupe repeated agent hints."""
     merged: list[dict] = []
     for item in items:
         if not merged or merged[-1]["tool"] != item["tool"]:
@@ -239,7 +235,7 @@ def _merge_observation_items(items: list[dict]) -> list[dict]:
 
 
 def _hoist_group_success(item: dict) -> dict:
-    """整组结果均成功时仅在组级保留一次 ok=true。"""
+    """When every item in a group succeeds, keep ok=true only at group level."""
     results = item.get("results")
     if not results or not all(result.get("ok") is True for result in results):
         return item
@@ -263,7 +259,6 @@ def _hoist_group_success(item: dict) -> dict:
 
 
 def _agent_hint(tool: str, result: dict) -> str | None:
-    """返回指定工具结果对应的简短审查提醒。"""
     error = result.get("error", {})
     if tool == "review_entity_types" and error.get("model_output"):
         return (
@@ -293,7 +288,6 @@ def _agent_hint(tool: str, result: dict) -> str | None:
 
 
 def _format_entity_type(schema: GraphSchema, entity_type: str) -> str:
-    """格式化模型判断实体类型所需的定义和正反例。"""
     guidance = schema.entity_guidance[entity_type]
     lines = [f"- {entity_type}"]
     if guidance.description:
@@ -306,7 +300,6 @@ def _format_entity_type(schema: GraphSchema, entity_type: str) -> str:
 
 
 def _format_parameter(definition: dict) -> str:
-    """格式化一个参数的 JSON 类型、枚举、范围和对象字段。"""
     parts = [definition.get("type", "any")]
     if "enum" in definition:
         values = json.dumps(definition["enum"], ensure_ascii=False)

@@ -1,4 +1,4 @@
-"""原生电子排版 PDF 的检测逻辑。"""
+"""Detect whether a PDF is born-digital (native text) vs scanned/mixed."""
 
 import re
 import statistics
@@ -9,7 +9,7 @@ from . import config
 
 
 def max_image_coverage(page: fitz.Page) -> float:
-    """返回页面中单张栅格图片覆盖页面的最大比例。"""
+    """Max fraction of the page covered by a single raster image."""
     page_area = page.rect.get_area()
     if page_area <= 0:
         return 0.0
@@ -32,7 +32,7 @@ def detect_native_pdf(
     document: fitz.Document,
     strict: bool = False,
 ) -> tuple[bool, dict[str, float | int]]:
-    """判断整份 PDF 是否为原生排版；扫描和混合版均返回 False。"""
+    """True only for native-layout PDFs; scanned/mixed return False."""
     total_pages = document.page_count
     if total_pages == 0:
         return False, {

@@ -8,15 +8,13 @@ from .tool_context import ToolContext
 
 class ContextTools:
     def __init__(self, context: ToolContext) -> None:
-        """绑定当前片段工具上下文。"""
         self.context = context
 
     def get_chunk_context(self) -> dict:
-        """仅返回当前片段文本，不暴露内部来源信息。"""
+        """Return only the chunk text; hide internal source metadata."""
         return success(text=self.context.workspace.text)
 
     def get_workspace_summary(self) -> dict:
-        """返回当前工作区数量和提交状态。"""
         workspace = self.context.workspace
         return success(
             entity_count=len(workspace.entities),

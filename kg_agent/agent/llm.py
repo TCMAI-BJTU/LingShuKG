@@ -11,7 +11,6 @@ from openai import OpenAI
 
 class ChatClient(Protocol):
     def complete(self, messages: list[dict[str, str]]) -> str:
-        """根据当前对话返回下一次模型响应。"""
         ...
 
 
@@ -30,7 +29,7 @@ class LLMSettings:
 
     @classmethod
     def from_env(cls) -> "LLMSettings":
-        """从 KG_LLM_* 环境变量读取模型设置。"""
+        """Load model settings from KG_LLM_* environment variables."""
         return cls(
             base_url=os.environ.get("KG_LLM_BASE_URL", cls.base_url),
             api_key=os.environ.get("KG_LLM_API_KEY", cls.api_key),
@@ -46,7 +45,6 @@ class LLMSettings:
 
 class OpenAIChatClient:
     def __init__(self, settings: LLMSettings) -> None:
-        """创建绑定指定 OpenAI 兼容端点的客户端。"""
         self.settings = settings
         self._client = OpenAI(
             api_key=settings.api_key,
@@ -55,7 +53,6 @@ class OpenAIChatClient:
         )
 
     def complete(self, messages: list[dict[str, str]]) -> str:
-        """调用模型并返回纯文本响应。"""
         if self.settings.stream:
             return self._complete_stream(messages)
         response = self._client.chat.completions.create(
@@ -73,7 +70,6 @@ class OpenAIChatClient:
         return message.content or ""
 
     def _complete_stream(self, messages: list[dict[str, str]]) -> str:
-        """流式打印并汇总模型响应。"""
         stream = self._client.chat.completions.create(
             model=self.settings.model,
             messages=messages,

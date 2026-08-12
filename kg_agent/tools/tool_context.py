@@ -22,19 +22,18 @@ class ToolContext:
     checkpoint_dirty: bool = False
 
     def checkpoint(self) -> None:
-        """将当前工作区保存为可恢复草稿。"""
         if self.checkpoint_deferred:
-            # 批量工具阶段只标记脏状态，避免每个 add 操作都写一次 diskcache。
+            # During batched tools, mark dirty only—avoid a diskcache write on every add.
             self.checkpoint_dirty = True
             return
         self.cache.save(self.cache_namespace, self.workspace)
 
     def begin_checkpoint_batch(self) -> None:
-        """延迟当前工具批次内的 diskcache 写入。"""
+        """Defer diskcache writes for the current tool batch."""
         self.checkpoint_deferred = True
 
     def flush_checkpoint_batch(self) -> None:
-        """结束当前工具批次并将累积修改一次性写入 diskcache。"""
+        """End the tool batch and flush accumulated edits to diskcache once."""
         self.checkpoint_deferred = False
         if not self.checkpoint_dirty:
             return
@@ -42,23 +41,21 @@ class ToolContext:
         self.cache.save(self.cache_namespace, self.workspace)
 
     def mark_changed(self) -> None:
-        """记录图谱修改并使旧校验和空结果确认失效。"""
+        """Record a graph change and invalidate stale validation/empty confirmation."""
         self.workspace.revision += 1
-        # 校验只对当时的 revision 有效，任何图谱变更都必须重新校验。
+        # Validation is revision-scoped; any graph change requires re-validation.
         self.workspace.validated_revision = None
         self.workspace.empty_confirmed_revision = None
         self.workspace.empty_reason = None
         self.checkpoint()
 
     def mark_validated(self, valid: bool) -> None:
-        """记录当前工作区版本的校验结果。"""
         self.workspace.validated_revision = (
             self.workspace.revision if valid else None
         )
         self.checkpoint()
 
     def mark_empty_confirmed(self, reason: str) -> None:
-        """记录智能体对当前空工作区的显式确认。"""
         self.workspace.empty_confirmed_revision = self.workspace.revision
         self.workspace.empty_reason = reason
         self.checkpoint()
@@ -73,10 +70,10 @@ def open_tool_context(
     cache_namespace: str = "default",
     source_key: str | None = None,
 ) -> ToolContext:
-    """为一个固定片段创建或恢复工具上下文。"""
+    """Create or restore tool context for a fixed chunk."""
     source_id = make_source_id(source_name, text, source_key)
     committed = store.source_exists(source_id)
-    # 已提交结果以 SQLite 为准；只有未提交片段才恢复 diskcache 草稿。
+    # Committed results come from SQLite; restore diskcache drafts only for uncommitted chunks.
     workspace = (
         None
         if committed

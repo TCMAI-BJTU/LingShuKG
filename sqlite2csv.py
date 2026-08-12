@@ -41,29 +41,27 @@ EXPORTS = {
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
-    """构建 SQLite 转 CSV 命令行参数。"""
     parser = argparse.ArgumentParser(
-        description="将知识图谱 SQLite 导出为来源、实体和关系三个 CSV。"
+        description="Export the knowledge-graph SQLite DB to sources/entities/relations CSV."
     )
     parser.add_argument(
         "--db",
         type=Path,
         default=DEFAULT_DB_PATH,
-        help=f"SQLite 文件，默认：{DEFAULT_DB_PATH}",
+        help=f"SQLite file (default: {DEFAULT_DB_PATH})",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=DEFAULT_OUTPUT_DIR,
-        help=f"CSV 输出目录，默认：{DEFAULT_OUTPUT_DIR}",
+        help=f"CSV output directory (default: {DEFAULT_OUTPUT_DIR})",
     )
     return parser
 
 
 def open_readonly_database(path: Path) -> sqlite3.Connection:
-    """以只读模式打开已存在的 SQLite 数据库。"""
     if not path.is_file():
-        raise FileNotFoundError(f"SQLite 文件不存在：{path}")
+        raise FileNotFoundError(f"SQLite file does not exist: {path}")
     connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     return connection
@@ -74,7 +72,6 @@ def export_query(
     query: str,
     output_path: Path,
 ) -> int:
-    """执行查询并将列名和全部数据写入一个 CSV 文件。"""
     cursor = connection.execute(query)
     fieldnames = [column[0] for column in cursor.description]
     rows = cursor.fetchall()
@@ -86,7 +83,6 @@ def export_query(
 
 
 def export_database(db_path: Path, output_dir: Path) -> dict[str, int]:
-    """将图谱数据库导出为来源、实体和关系三个 CSV 文件。"""
     output_dir.mkdir(parents=True, exist_ok=True)
     connection = open_readonly_database(db_path)
     try:
@@ -99,7 +95,6 @@ def export_database(db_path: Path, output_dir: Path) -> dict[str, int]:
 
 
 def main() -> None:
-    """执行 SQLite 转 CSV 导出并打印各表行数。"""
     args = build_argument_parser().parse_args()
     counts = export_database(args.db, args.output_dir)
     for filename, count in counts.items():

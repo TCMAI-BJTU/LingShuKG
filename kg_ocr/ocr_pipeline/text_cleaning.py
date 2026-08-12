@@ -1,4 +1,4 @@
-"""OCR 输出与普通文本的清洗函数。"""
+"""OCR / plain-text cleaning helpers."""
 
 import re
 
@@ -12,7 +12,7 @@ MARKDOWN_STRUCTURAL_LINE_PATTERN = re.compile(
 
 
 def join_plain_lines(lines: list[str]) -> str:
-    """拼接同一自然段中由页面栏宽产生的视觉换行。"""
+    """Join visual line wraps within one paragraph."""
     if not lines:
         return ""
 
@@ -35,7 +35,7 @@ def join_plain_lines(lines: list[str]) -> str:
 
 
 def join_visual_line_wraps(text: str) -> str:
-    """合并普通正文行，同时保留 Markdown 结构和真正的段落空行。"""
+    """Merge body wraps; keep Markdown structure and real blank lines."""
     output_blocks: list[str] = []
     for block in re.split(r"\n\s*\n", text):
         lines = [line.rstrip() for line in block.splitlines() if line.strip()]
@@ -72,7 +72,7 @@ def join_visual_line_wraps(text: str) -> str:
 
 
 def clean_ocr_output(text: str) -> tuple[str, bool]:
-    """清理明显的退化重复，返回文本及异常标志。"""
+    """Drop obvious degenerate repetition; return (text, abnormal)."""
     abnormal = False
 
     dot_match = DOT_LEADER_PATTERN.search(text)

@@ -30,14 +30,13 @@ class ChunkToolset:
         relation_tools: RelationTools,
         lifecycle_tools: LifecycleTools,
     ) -> None:
-        """聚合一个固定片段可使用的全部工具。"""
         self.context_tools = context_tools
         self.entity_tools = entity_tools
         self.review_tools = review_tools
         self.relation_tools = relation_tools
         self.lifecycle_tools = lifecycle_tools
         schema = context_tools.context.schema
-        # 工具参数枚举直接由当前 Schema 生成，在执行前即可拒绝非法类型。
+        # Parameter enums come from the current Schema so illegal types fail before execution.
         self._definitions = build_tool_specs(
             list(schema.entity_types),
             list(schema.relation_rules),
@@ -62,55 +61,46 @@ class ChunkToolset:
 
     @property
     def definitions(self) -> list[dict[str, Any]]:
-        """返回 OpenAI 兼容工具定义。"""
         return self._definitions
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """按名称调用当前片段工具。"""
         handler = self._handlers.get(name)
         if handler is None:
             return failure("UNKNOWN_TOOL", f"未知工具：{name}")
-        # 所有模型输入先经过统一参数校验，具体工具只处理已验证的结构。
+        # All model args pass shared validation first; tools only see validated structures.
         argument_error = validate_tool_arguments(name, arguments, self._definitions)
         if argument_error is not None:
             return argument_error
-        # 工具计时只覆盖本地逻辑，模型审查时间不计入慢操作日志。
+        # Tool timing covers local work only; model review time is excluded from slow-op logs.
         with log_slow_operation("tool.call", tool=name):
             return handler(**arguments)
 
     @property
     def review_available(self) -> bool:
-        """返回是否可执行自动批量独立审查。"""
         return self.review_tools.available
 
     def review_entity_types(
         self,
         entities: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """在一次独立请求中审查一批已新增实体。"""
         return self.review_tools.review_entity_types(entities)
 
     def begin_batch(self) -> None:
-        """开始一轮工具批处理并延迟草稿检查点写入。"""
         self.context_tools.context.begin_checkpoint_batch()
 
     def flush_batch(self) -> None:
-        """将本轮工具的累积修改一次性写入草稿缓存。"""
         self.context_tools.context.flush_checkpoint_batch()
 
     @property
     def source_id(self) -> str:
-        """返回内部绑定且不能由模型修改的来源 ID。"""
         return self.lifecycle_tools.context.workspace.source_id
 
     @property
     def committed(self) -> bool:
-        """返回当前片段是否已经提交。"""
         return self.lifecycle_tools.context.committed
 
     @property
     def workspace(self) -> ChunkWorkspace:
-        """返回主 Agent 重建有界上下文所需的当前工作区。"""
         return self.context_tools.context.workspace
 
 
@@ -124,7 +114,7 @@ def open_chunk_toolset(
     source_key: str | None = None,
     reviewer: SemanticReviewer | None = None,
 ) -> ChunkToolset:
-    """创建绑定单个来源片段的完整工具集。"""
+    """Open a full toolset bound to a single source chunk."""
     context = open_tool_context(
         source_name,
         text,

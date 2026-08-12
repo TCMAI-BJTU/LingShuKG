@@ -1,4 +1,4 @@
-"""DeepSeek-OCR-2 八端口负载分发与输出清理。"""
+"""DeepSeek-OCR-2 eight-port load balancing and output cleanup."""
 
 import base64
 import logging
@@ -46,7 +46,7 @@ class _Endpoint:
 
 
 def _clean_deepseek_output(text: str) -> tuple[str, bool]:
-    """删除 DeepSeek 定位标签，并复用公共退化输出清理。"""
+    """Strip DeepSeek grounding tags; reuse shared degenerate-output cleanup."""
     had_grounding = bool(
         GROUNDING_TAG_PATTERN.search(text)
         or GROUNDING_COORD_PATTERN.search(text)
@@ -61,7 +61,7 @@ def _clean_deepseek_output(text: str) -> tuple[str, bool]:
 
 
 class DeepSeekOCRPool:
-    """轮询八个 vLLM 服务，并限制每个端口的并发请求数。"""
+    """Round-robin across vLLM endpoints with per-port concurrency caps."""
 
     def __init__(
         self,

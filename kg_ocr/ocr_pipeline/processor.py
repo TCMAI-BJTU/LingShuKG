@@ -1,4 +1,4 @@
-"""原生提取与 Qwen OCR 的自动分流和文件输出。"""
+"""Native extraction vs Qwen OCR routing and ordered file output."""
 
 from collections import deque
 from concurrent.futures import (
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class OCRBackend(Protocol):
-    """可被 PDF 处理器调用的页面 OCR 后端。"""
+    """Page OCR backend callable by the PDF processor."""
 
     def recognize(
         self,
@@ -49,7 +49,7 @@ class OCRBackend(Protocol):
 
 @dataclass
 class _OCRFileState:
-    """维护一个 PDF 在共享页面线程池中的输出和调度状态。"""
+    """Per-PDF scheduling and ordered-write state in the shared page pool."""
 
     pdf_path: Path
     output_path: Path
@@ -63,14 +63,7 @@ class _OCRFileState:
 
 
 def _get_worker_document(pdf_path: Path) -> fitz.Document:
-    """获取当前线程绑定的 PDF 文档。
-
-    参数：
-        pdf_path: 需要打开的 PDF 路径。
-
-    返回：
-        当前线程独占、可安全读取的 PyMuPDF 文档对象。
-    """
+    """Thread-local PyMuPDF document (not shareable across threads)."""
     path_string = str(pdf_path)
     if getattr(_worker_state, "pdf_path", None) != path_string:
         previous = getattr(_worker_state, "document", None)
@@ -90,20 +83,7 @@ def _process_ocr_page(
     max_output_tokens: int,
     ocr_backend: OCRBackend | None,
 ) -> tuple[int, str, str]:
-    """在线程中渲染并识别单页。
-
-    参数：
-        pdf_path: 当前 PDF 路径。
-        page_number: 从 1 开始的页码。
-        client: Qwen API 客户端；使用自定义后端时为 ``None``。
-        render_zoom: PDF 渲染倍率。
-        prompt: OCR 提示词。
-        max_output_tokens: 单页最大生成 token 数。
-        ocr_backend: 可选的自定义 OCR 后端。
-
-    返回：
-        页码、识别文本和处理状态。
-    """
+    """Render and OCR one page in a worker thread."""
     try:
         document = _get_worker_document(pdf_path)
         page = document[page_number - 1]
@@ -146,17 +126,6 @@ def _append_page(
     text: str,
     output_format: str,
 ) -> None:
-    """将一个页面的文字以固定页码顺序追加到临时输出文件。
-
-    参数：
-        output_path: 要追加的临时输出文件。
-        page_number: 从 1 开始的页码。
-        text: 当前页面的最终文本。
-        output_format: 输出格式；目前 txt 与 md 共用相同页面分隔形式。
-
-    返回：
-        无。
-    """
     page_header = f"## 第 {page_number} 页"
     with output_path.open("a", encoding="utf-8") as output_file:
         output_file.write(f"{page_header}\n\n{text}\n\n")
@@ -169,18 +138,6 @@ def _create_ocr_file_state(
     page_count: int,
     output_format: str,
 ) -> _OCRFileState:
-    """创建一个强制 OCR 文件任务的临时输出和页面调度状态。
-
-    参数：
-        pdf_path: 待 OCR 的 PDF 文件路径。
-        output_dir: 当前 PDF 的输出目录。
-        start_page: 从 1 开始的起始页码。
-        page_count: 已确认需要处理的页数。
-        output_format: 输出文件后缀，支持 txt 或 md。
-
-    返回：
-        已初始化临时文件的页面调度状态。
-    """
     if page_count < 1:
         raise ValueError("page_count 必须大于或等于 1")
 
@@ -205,15 +162,6 @@ def _write_ready_ocr_pages(
     state: _OCRFileState,
     output_format: str,
 ) -> None:
-    """按页码顺序写入已经完成的 OCR 页面。
-
-    参数：
-        state: 当前 PDF 的调度和输出状态。
-        output_format: 输出文件后缀，支持 txt 或 md。
-
-    返回：
-        无。
-    """
     while state.next_page_to_write in state.pending_results:
         page_number = state.next_page_to_write
         text = state.pending_results.pop(page_number)
@@ -238,26 +186,11 @@ def process_ocr_jobs(
     ocr_backend: OCRBackend | None = None,
     activity_callback: Callable[[Path], None] | None = None,
 ) -> list[Path]:
-    """用一个共享线程池并发处理多个 PDF 的页面。
+    """OCR many PDFs on one shared page pool; write each file in page order.
 
-    页面任务按 PDF 输入顺序优先提交：先尽量用当前 PDF 填满线程池，只有当前
-    PDF 的未提交页面不足以填满空闲线程时，才开始下一份 PDF。每个输出文件仍
-    严格按照原始页码顺序写入。
-
-    参数：
-        jobs: ``(PDF 路径, 输出目录, 已确认页数)`` 任务列表。
-        start_page: 从 1 开始的起始页码。
-        render_zoom: PDF 渲染倍率。
-        prompt: OCR 提示词。
-        max_output_tokens: 单页最大生成 token 数。
-        max_workers: 所有 PDF 共用的页面线程数。
-        output_format: 输出文件后缀，支持 txt 或 md。
-        progress_callback: 每完成一页后调用的可选回调。
-        ocr_backend: 可选的自定义 OCR 后端；默认调用 Qwen 服务。
-        activity_callback: 每启动一份 PDF 时调用的可选回调，参数为该 PDF 路径。
-
-    返回：
-        已完成输出文件的路径列表，顺序与 ``jobs`` 一致。
+    Submits pages preferring earlier PDFs first (fill the pool from the current
+    file before starting the next). Completions may arrive out of order, but
+    each output file is still appended strictly by page number.
     """
     if start_page < 1:
         raise ValueError("start_page 必须大于或等于 1")
@@ -280,14 +213,6 @@ def process_ocr_jobs(
         ] = {}
 
         def submit_page(state: _OCRFileState) -> None:
-            """向共享线程池提交当前 PDF 的下一页。
-
-            参数：
-                state: 要提交下一页的 PDF 调度状态。
-
-            返回：
-                无。
-            """
             page_number = state.next_page_to_submit
             futures[
                 executor.submit(
@@ -305,14 +230,6 @@ def process_ocr_jobs(
             state.next_page_to_submit += 1
 
         def start_next_file() -> _OCRFileState:
-            """初始化下一份 PDF，并返回其页面调度状态。
-
-            参数：
-                无。
-
-            返回：
-                新初始化的 PDF 页面调度状态。
-            """
             pdf_path, output_dir, page_count = unstarted_jobs.popleft()
             state = _create_ocr_file_state(
                 pdf_path,
@@ -327,17 +244,7 @@ def process_ocr_jobs(
             return state
 
         def get_submission_state() -> _OCRFileState | None:
-            """获取当前应优先提交页面的 PDF 状态。
-
-            当前 PDF 的页面全部提交后，才初始化下一份 PDF；没有待处理 PDF 时
-            返回 ``None``。
-
-            参数：
-                无。
-
-            返回：
-                仍有页面可提交的 PDF 状态；全部任务已提交时返回 ``None``。
-            """
+            """Current PDF still has pages to submit; else start the next one."""
             nonlocal submission_state
             while (
                 submission_state is None
@@ -350,14 +257,6 @@ def process_ocr_jobs(
             return submission_state
 
         def fill_available_workers() -> None:
-            """按 PDF 输入顺序优先补足共享线程池中的页面任务。
-
-            参数：
-                无。
-
-            返回：
-                无。
-            """
             while len(futures) < max_workers:
                 state = get_submission_state()
                 if state is None:
@@ -365,14 +264,6 @@ def process_ocr_jobs(
                 submit_page(state)
 
         def finish_file_if_ready(state: _OCRFileState) -> None:
-            """在 PDF 的所有页面写入后原子替换正式输出文件。
-
-            参数：
-                state: 要检查是否已完成的 PDF 调度状态。
-
-            返回：
-                无。
-            """
             if (
                 state.finished
                 or state.next_page_to_submit <= state.last_page
@@ -429,26 +320,7 @@ def parse_pdf(
     force_ocr: bool = False,
     force_native: bool = False,
 ) -> Path:
-    """处理一个 PDF，并将页面文本按页码顺序保存到一个文件。
-
-    参数：
-        pdf_path: 待处理的 PDF 路径。
-        output_dir: 输出目录；未指定时使用默认输出目录。
-        start_page: 从 1 开始的起始页码。
-        end_page: 可选的结束页码。
-        render_zoom: OCR 时的 PDF 渲染倍率。
-        prompt: OCR 提示词。
-        max_output_tokens: 单页最大生成 token 数。
-        max_workers: 单个 PDF 的 OCR 页面线程数。
-        output_format: 输出文件后缀，支持 txt 或 md。
-        progress_callback: 每完成一页后调用的可选回调。
-        ocr_backend: 可选的自定义 OCR 后端；默认调用 Qwen 服务。
-        force_ocr: 强制走视觉 OCR。
-        force_native: 强制走原生文本提取。
-
-    返回：
-        完整输出文件的路径。
-    """
+    """Process one PDF (native extract or OCR) into a single ordered file."""
     pdf_path = Path(pdf_path)
     if not pdf_path.is_file():
         raise FileNotFoundError(f"PDF 不存在：{pdf_path}")
@@ -536,7 +408,7 @@ def parse_pdf(
                     if progress_callback is not None:
                         progress_callback()
 
-                    # 即使请求乱序完成，文件仍严格按页码顺序追加。
+                    # Completions may be out of order; file append stays page-ordered.
                     while next_page_to_write in pending_results:
                         page_text, _page_status = pending_results.pop(
                             next_page_to_write

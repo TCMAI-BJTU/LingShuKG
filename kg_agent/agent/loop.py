@@ -41,22 +41,20 @@ class ReActChunkAgent:
         schema: GraphSchema,
         settings: AgentSettings | None = None,
     ) -> None:
-        """创建绑定模型客户端和 Schema 的片段智能体。"""
         self.client = client
         self.schema = schema
         self.settings = settings or AgentSettings()
 
     @staticmethod
     def _print_prompt(messages: list[dict[str, str]]) -> None:
-        """打印本轮实际发送给模型的完整消息列表。"""
         print("✿PROMPT✿", flush=True)
         for message in messages:
             print(f"[{message['role']}]", flush=True)
             print(message["content"], flush=True)
 
     def run(self, toolset: ChunkToolset) -> AgentRunResult:
-        """迭代调用模型和工具，直到片段提交或达到步数上限。"""
-        # 数据库已经存在该 source_id 时直接跳过模型，实现目录级断点续跑。
+        """Iterate model and tools until the chunk is submitted or the step limit is hit."""
+        # Skip the model when this source_id is already committed (directory-level resume).
         if toolset.committed:
             return AgentRunResult(
                 status="already_committed",
@@ -109,7 +107,7 @@ class ReActChunkAgent:
             batch_failed = bool(parsed.errors)
             committed_result = None
             added_entities: dict[tuple[str, str], dict[str, str]] = {}
-            # 同一轮的多个修改先写内存，轮次结束时只落一次 diskcache。
+            # Keep in-round edits in memory; flush diskcache once at round end.
             toolset.begin_batch()
             for action in parsed.actions:
                 if action.tool in {
@@ -117,7 +115,7 @@ class ReActChunkAgent:
                     "update_relation",
                     "submit_chunk",
                 }:
-                    # 关系和提交动作前先完成本批实体审查，避免先凑关系再倒推类型。
+                    # Finish entity-type review before relations/submit so types are not reverse-engineered for edges.
                     batch_failed = _append_entity_type_review(
                         toolset,
                         added_entities,
@@ -126,7 +124,7 @@ class ReActChunkAgent:
                     toolset.flush_batch()
                 tool_calls += 1
                 if action.tool == "submit_chunk" and batch_failed:
-                    # JSONL 中任一动作失败时保留其他成功修改，但禁止本轮继续提交。
+                    # Keep successful edits on partial JSONL failure, but block submit in this round.
                     last_result = {
                         "ok": False,
                         "error": {
@@ -142,7 +140,7 @@ class ReActChunkAgent:
                     and last_result.get("ok")
                     and last_result.get("status") == "created"
                 ):
-                    # 收集整批新增实体，稍后合并成一次独立类型审查请求。
+                    # Collect newly added entities for one batched independent type review.
                     key = (
                         action.arguments["name"].strip(),
                         action.arguments["entity_type"],
@@ -156,7 +154,7 @@ class ReActChunkAgent:
                     and last_result.get("ok")
                     and last_result.get("identity_changed")
                 ):
-                    # 改名或改型等同于新实体，后续关系使用前必须重新独立审查。
+                    # Rename/retype is treated as a new entity and must be re-reviewed before relations.
                     key = (
                         last_result["name"],
                         last_result["entity_type"],
@@ -197,7 +195,7 @@ class ReActChunkAgent:
                     parse_errors=parse_errors,
                     last_result=committed_result,
                 )
-            # 工作区已包含所有成功修改，旧对话不再重复发送。
+            # Workspace already holds successful edits; do not resend old dialogue.
             messages = build_next_messages(
                 system_prompt,
                 user_prompt,
@@ -216,7 +214,6 @@ class ReActChunkAgent:
 
 
 def _tool_result_failed(tool: str, result: dict[str, Any]) -> bool:
-    """判断工具结果是否要求模型先检查并修复当前工作区。"""
     return not result.get("ok") or (
         tool == "validate_chunk" and not result.get("valid", False)
     )
@@ -227,7 +224,7 @@ def _append_entity_type_review(
     added_entities: dict[tuple[str, str], dict[str, str]],
     observation_results: list[tuple[str, dict[str, Any]]],
 ) -> bool:
-    """用一次独立请求审查当前批次新增实体并追加 Observation。"""
+    """Review newly added entities in one independent request and append an Observation."""
     if not added_entities or not toolset.review_available:
         return False
     result = toolset.review_entity_types(list(added_entities.values()))

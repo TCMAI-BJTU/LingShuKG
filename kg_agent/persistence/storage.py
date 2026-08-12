@@ -16,7 +16,7 @@ def make_source_id(
     text: str,
     source_key: str | None = None,
 ) -> str:
-    """根据内部来源键和片段文本生成稳定来源 ID。"""
+    """Build a stable source ID from the internal source key and chunk text."""
     identity = source_key or source_name
     return hashlib.sha256(f"{identity}\0{text}".encode("utf-8")).hexdigest()
 
@@ -27,7 +27,6 @@ class GraphStore:
         path: Path | str,
         check_same_thread: bool = True,
     ) -> None:
-        """打开 SQLite 图谱库并初始化表结构。"""
         db_path = Path(path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = db_path
@@ -39,13 +38,12 @@ class GraphStore:
             )
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA foreign_keys = ON")
-            # WAL 允许多个读取连接与一个写入连接并行，busy_timeout 负责等待短暂写锁。
+            # WAL allows concurrent readers with one writer; busy_timeout waits out short write locks.
             self._connection.execute("PRAGMA journal_mode = WAL")
             self._connection.execute("PRAGMA busy_timeout = 60000")
             self._create_tables()
 
     def _create_tables(self) -> None:
-        """创建来源、实体和关系三张核心表。"""
         self._connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS sources (
@@ -92,11 +90,9 @@ class GraphStore:
         self._connection.commit()
 
     def close(self) -> None:
-        """关闭 SQLite 连接。"""
         self._connection.close()
 
     def source_exists(self, source_id: str) -> bool:
-        """判断片段是否已经原子提交。"""
         row = self._connection.execute(
             "SELECT 1 FROM sources WHERE source_id = ?",
             (source_id,),
@@ -104,15 +100,15 @@ class GraphStore:
         return row is not None
 
     def commit_chunk(self, workspace: ChunkWorkspace) -> bool:
-        """在一个事务中提交来源、实体和关系。"""
+        """Atomically commit source, entities, and relations in one transaction."""
         with log_slow_operation(
             "database.commit_chunk",
             entity_count=len(workspace.entities),
             relation_count=len(workspace.relations),
         ):
-            # 上下文管理器保证三张表全部成功才提交，任一步失败都会整体回滚。
+            # Commit all three tables atomically; any failure rolls the whole transaction back.
             with self._connection:
-                # sources 主键同时承担幂等锁；已提交片段不会重复写实体和关系。
+                # sources PK doubles as an idempotency lock; committed chunks are not rewritten.
                 cursor = self._connection.execute(
                     "INSERT OR IGNORE INTO sources VALUES (?, ?, ?)",
                     (workspace.source_id, workspace.source_name, workspace.text),
@@ -129,7 +125,7 @@ class GraphStore:
                         for entity in workspace.entities.values()
                     ],
                 )
-                # 关系表只保存数据库实体 ID，因此实体落库后再建立本地 ID 映射。
+                # Relations store DB entity IDs, so map local IDs after entities are inserted.
                 rows = self._connection.execute(
                     """
                     SELECT id, name, entity_type
@@ -168,7 +164,6 @@ class GraphStore:
             return True
 
     def list_entities(self) -> list[dict[str, Any]]:
-        """按写入顺序列出全部实体记录。"""
         rows = self._connection.execute(
             """
             SELECT id, name, entity_type, source_id
@@ -178,7 +173,6 @@ class GraphStore:
         return [dict(row) for row in rows]
 
     def list_relations(self) -> list[dict[str, Any]]:
-        """按写入顺序列出全部关系记录。"""
         rows = self._connection.execute(
             """
             SELECT id,
@@ -193,7 +187,6 @@ class GraphStore:
         return [dict(row) for row in rows]
 
     def get_source_result(self, source_id: str) -> dict[str, Any] | None:
-        """读取一个已提交片段的来源、实体和关系。"""
         source = self._connection.execute(
             "SELECT source_id, source_name FROM sources WHERE source_id = ?",
             (source_id,),

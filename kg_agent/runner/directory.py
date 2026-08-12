@@ -36,7 +36,7 @@ class ChunkTask:
 
 
 def find_text_files(data_dir: Path) -> list[Path]:
-    """递归查找受支持的文本文件并稳定排序。"""
+    """Recursively find supported text files and sort them stably."""
     return sorted(
         path
         for path in data_dir.rglob("*")
@@ -45,7 +45,7 @@ def find_text_files(data_dir: Path) -> list[Path]:
 
 
 def normalize_whitespace(text: str) -> str:
-    """将连续空格、制表符和换行统一合并为一个普通空格。"""
+    """Collapse runs of spaces, tabs, and newlines into a single space."""
     return " ".join(text.split())
 
 
@@ -62,7 +62,6 @@ class DirectoryRunner:
         chunk_overlap: int = 100,
         workers: int = 1,
     ) -> None:
-        """保存目录处理所需依赖和分块参数。"""
         self.agent = agent
         self.schema = schema
         self.store = store
@@ -86,7 +85,7 @@ class DirectoryRunner:
         )
 
     def run(self, data_dir: Path) -> dict[str, Any]:
-        """递归处理目录并返回汇总统计。"""
+        """Process a directory recursively and return summary stats."""
         with log_slow_operation(
             "directory.scan",
             data_dir=str(data_dir),
@@ -145,7 +144,7 @@ class DirectoryRunner:
         self,
         prepared: list[dict[str, Any]],
     ) -> Iterator[ChunkTask]:
-        """按文件和 chunk 顺序惰性生成任务，避免一次性创建全部对象。"""
+        """Lazily yield tasks in file/chunk order without materializing all objects."""
         for file_index, item in enumerate(prepared):
             for chunk_index, chunk in enumerate(item["chunks"]):
                 yield ChunkTask(
@@ -161,8 +160,7 @@ class DirectoryRunner:
         tasks: Iterable[ChunkTask],
         task_count: int,
     ) -> list[tuple[int, dict[str, Any]]]:
-        """使用一条全局 tqdm 进度条串行或并发执行全部 chunk。"""
-        # 预先按任务序号占位，使并发完成顺序不会改变最终输出顺序。
+        # Pre-slot results by task index so concurrent finish order does not scramble output.
         results: list[tuple[int, dict[str, Any]] | None] = [None] * task_count
         disabled = self.agent.settings.debug or not sys.stderr.isatty()
         with tqdm(
@@ -189,7 +187,7 @@ class DirectoryRunner:
         results: list[tuple[int, dict[str, Any]] | None],
         progress: Any,
     ) -> None:
-        """串行执行任务，并将单任务异常转换为失败结果后继续。"""
+        """Run tasks serially; convert per-task exceptions into failure results and continue."""
         for index, task in enumerate(tasks):
             try:
                 result = self.process_chunk(
@@ -199,7 +197,7 @@ class DirectoryRunner:
                     task.text,
                 )
             except Exception as error:
-                # 单个 chunk 失败不应中断目录中其余任务。
+                # One chunk failure must not stop the rest of the directory run.
                 result = self._failed_task_result(task, error)
             results[index] = (task.file_index, result)
             progress.update(1)
@@ -211,12 +209,12 @@ class DirectoryRunner:
         results: list[tuple[int, dict[str, Any]] | None],
         progress: Any,
     ) -> None:
-        """并发执行有限数量 Future，并在结束后关闭各线程复用的连接。"""
+        """Run a bounded set of Futures and close per-thread reused connections afterward."""
         try:
             with ThreadPoolExecutor(max_workers=self.workers) as executor:
                 task_iterator = iter(enumerate(tasks))
                 futures = {}
-                # 初始只创建 worker 数量的 Future，避免海量 chunk 同时占用内存。
+                # Start only worker-count Futures to avoid holding all chunks in memory.
                 for _ in range(min(self.workers, task_count)):
                     item = next(task_iterator, None)
                     if item is None:
@@ -237,7 +235,7 @@ class DirectoryRunner:
                         try:
                             result = future.result()
                         except Exception as error:
-                            # 在主线程统一打印 traceback，避免 worker 日志交错。
+                            # Print tracebacks on the main thread to avoid interleaved worker logs.
                             result = self._failed_task_result(task, error)
                         results[index] = (task.file_index, result)
                         progress.update(1)
@@ -258,7 +256,6 @@ class DirectoryRunner:
         task: ChunkTask,
         error: Exception,
     ) -> dict[str, Any]:
-        """打印单个 chunk 的异常，并返回可写入输出文件的失败结果。"""
         print(
             (
                 "\n[chunk failed] "
@@ -293,7 +290,6 @@ class DirectoryRunner:
         }
 
     def _prepare_file(self, data_dir: Path, path: Path) -> dict[str, Any]:
-        """读取、清理并切分一个文件，但不运行模型。"""
         relative_path = path.relative_to(data_dir)
         with timing_context(file=relative_path.as_posix()):
             with log_slow_operation("file.prepare"):
@@ -311,7 +307,6 @@ class DirectoryRunner:
                 }
 
     def _process_parallel_task(self, task: ChunkTask) -> dict[str, Any]:
-        """使用当前 worker 线程复用的 SQLite 连接处理一个 chunk。"""
         with timing_context(
             file=task.relative_path.as_posix(),
             chunk=task.chunk_index,
@@ -326,11 +321,11 @@ class DirectoryRunner:
             )
 
     def _parallel_store(self) -> GraphStore:
-        """获取当前 worker 的复用连接，首次调用时创建并登记。"""
+        """Return this worker's reused store, creating and registering it on first use."""
         store = getattr(self._worker_local, "store", None)
         if store is not None:
             return store
-        # 连接仍只在所属 worker 内执行查询，但允许线程池结束后由主线程关闭。
+        # Queries stay on the owning worker; the main thread may close connections after the pool ends.
         store = GraphStore(self.store.path, check_same_thread=False)
         self._worker_local.store = store
         with self._worker_stores_lock:
@@ -338,7 +333,6 @@ class DirectoryRunner:
         return store
 
     def _close_parallel_stores(self) -> None:
-        """在线程池结束后关闭并清空本轮创建的全部 worker 连接。"""
         with self._worker_stores_lock:
             stores = list(self._worker_stores)
             self._worker_stores.clear()
@@ -350,7 +344,6 @@ class DirectoryRunner:
         prepared: dict[str, Any],
         chunk_results: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        """按输入顺序组装并写出一个文件的镜像 JSON 结果。"""
         relative_path = prepared["relative_path"]
         with timing_context(file=relative_path.as_posix()):
             with log_slow_operation("file.write_result"):
@@ -368,7 +361,7 @@ class DirectoryRunner:
                 return result
 
     def process_file(self, data_dir: Path, path: Path) -> dict[str, Any]:
-        """处理单个文本文件并写出镜像 JSON 结果。"""
+        """Process one text file and write the mirrored JSON result."""
         prepared = self._prepare_file(data_dir, path)
         chunk_results = [
             self.process_chunk(
@@ -389,7 +382,6 @@ class DirectoryRunner:
         text: str,
         store: GraphStore | None = None,
     ) -> dict[str, Any]:
-        """运行一个片段并读取其最终数据库结果。"""
         with timing_context(
             file=relative_path.as_posix(),
             chunk=chunk_index,
@@ -426,13 +418,12 @@ class DirectoryRunner:
             }
 
     def _source_key(self, relative_path: Path, chunk_index: int) -> str:
-        """根据相对路径和 chunk 序号生成稳定的内部来源键。"""
-        # 内部来源键可区分不同目录下同名、同内容的文件。
+        """Build a stable internal source key from relative path and chunk index."""
+        # Internal source keys distinguish same-named/same-content files under different paths.
         return (
             f"{self.cache_namespace}:"
             f"{relative_path.as_posix()}#chunk_{chunk_index}"
         )
 
     def output_path(self, relative_path: Path) -> Path:
-        """将输入相对路径映射为输出目录中的 JSON 路径。"""
         return self.output_dir / relative_path.with_suffix(".json")

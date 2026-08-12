@@ -25,7 +25,7 @@ def build_initial_messages(
     text: str,
     workspace: ChunkWorkspace,
 ) -> list[dict[str, str]]:
-    """构建首次模型请求，断点恢复时同时告知已有工作区。"""
+    """Build the first model request; include existing workspace state on resume."""
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": text},
@@ -47,7 +47,7 @@ def build_next_messages(
     assistant_response: str,
     observation: str,
 ) -> list[dict[str, str]]:
-    """仅保留最近一轮交互并附加最新工作区，防止历史无界增长。"""
+    """Keep only the latest turn plus the newest workspace to bound history growth."""
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": text},
@@ -63,7 +63,7 @@ def build_next_messages(
 
 
 def build_workspace_checkpoint(workspace: ChunkWorkspace) -> str:
-    """将当前实体、关系和待处理警告序列化为模型可见快照。"""
+    """Serialize entities, relations, and pending warnings into a model-visible snapshot."""
     entities = [
         {
             "entity_id": entity.entity_id,
@@ -94,7 +94,6 @@ def build_workspace_checkpoint(workspace: ChunkWorkspace) -> str:
 
 
 def _workspace_has_state(workspace: ChunkWorkspace) -> bool:
-    """判断工作区是否包含需在首轮显式告知模型的恢复状态。"""
     return bool(
         workspace.entities
         or workspace.relations
@@ -105,7 +104,7 @@ def _workspace_has_state(workspace: ChunkWorkspace) -> bool:
 
 
 def _relation_checkpoint(workspace: ChunkWorkspace, relation: Any) -> dict:
-    """将内部实体 ID 关系转为主 Agent 可直接操作的名称与类型。"""
+    """Map internal entity-ID relations to name+type structures the agent can edit."""
     subject = workspace.entities[relation.subject_entity_id]
     obj = workspace.entities[relation.object_entity_id]
     return {
@@ -119,7 +118,6 @@ def _relation_checkpoint(workspace: ChunkWorkspace, relation: Any) -> dict:
 
 
 def _compact_warning(warning: dict[str, Any]) -> dict[str, Any]:
-    """仅保留主 Agent 修正或确认审查警告所需字段。"""
     return {
         field: warning[field]
         for field in WARNING_FIELDS

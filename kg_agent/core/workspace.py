@@ -25,12 +25,10 @@ class ChunkWorkspace:
     review_sequence: int = 0
 
     def next_entity_id(self) -> str:
-        """生成当前工作区内唯一的实体本地 ID。"""
         self.entity_sequence += 1
         return f"e_{self.entity_sequence}"
 
     def next_relation_id(self) -> str:
-        """生成当前工作区内唯一的关系本地 ID。"""
         self.relation_sequence += 1
         return f"r_{self.relation_sequence}"
 
@@ -39,10 +37,10 @@ class ChunkWorkspace:
         key: str,
         warning: dict[str, Any],
     ) -> dict[str, Any]:
-        """新建或替换一条稳定键对应的待处理审查警告。"""
+        """Create or replace a pending review warning for a stable key."""
         existing = self.review_warnings.get(key)
         if existing is not None:
-            # 同一问题重复审查时沿用 warning_id，便于断点恢复后继续处理。
+            # Reuse warning_id on repeated reviews so resume can continue the same issue.
             warning_id = existing["warning_id"]
         else:
             self.review_sequence += 1
@@ -56,7 +54,6 @@ class ChunkWorkspace:
         entity_id: str,
         kind: str | None = None,
     ) -> None:
-        """清除指定实体的全部或特定类型审查警告。"""
         keys = [
             key
             for key, warning in self.review_warnings.items()
@@ -67,7 +64,7 @@ class ChunkWorkspace:
             del self.review_warnings[key]
 
     def to_dict(self) -> dict[str, Any]:
-        """序列化完整工作区以供断点恢复。"""
+        """Serialize the full workspace for checkpoint resume."""
         return {
             "source_id": self.source_id,
             "source_name": self.source_name,
@@ -90,7 +87,6 @@ class ChunkWorkspace:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "ChunkWorkspace":
-        """从缓存字典恢复工作区。"""
         return cls(
             source_id=payload["source_id"],
             source_name=payload["source_name"],

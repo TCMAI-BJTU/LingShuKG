@@ -25,17 +25,15 @@ class ActionParseResult:
 
     @property
     def action(self) -> AgentAction | None:
-        """在结果恰好包含一个动作时返回该动作。"""
         return self.actions[0] if len(self.actions) == 1 else None
 
     @property
     def error(self) -> str | None:
-        """将本轮全部解析错误合并为反馈文本。"""
         return "；".join(self.errors) if self.errors else None
 
 
 def parse_action(raw: str) -> ActionParseResult:
-    """先校验 ReAct 外层格式，再逐行解析 JSON 工具动作。"""
+    """Validate ReAct outer format, then parse JSON tool actions line by line."""
     format_errors = _validate_react_format(raw)
     if format_errors:
         return ActionParseResult((), format_errors)
@@ -59,7 +57,6 @@ def _parse_action_item(
     payload: Any,
     index: int,
 ) -> tuple[AgentAction | None, str | None]:
-    """校验并转换批次中的一个动作对象。"""
     if not isinstance(payload, dict):
         return None, f"第 {index} 个动作必须是 JSON 对象"
     unknown_fields = sorted(set(payload) - {"tool", "arguments"})
@@ -80,7 +77,7 @@ def _parse_action_item(
 
 
 def _validate_react_format(raw: str) -> tuple[str, ...]:
-    """校验 Thought/Action 标记的数量、顺序和对应内容。"""
+    """Validate Thought/Action marker count, order, and payload."""
     content = str(raw or "").strip()
     thought_count = content.count(THOUGHT_MARKER)
     action_count = content.count(ACTION_MARKER)
@@ -111,5 +108,4 @@ def _validate_react_format(raw: str) -> tuple[str, ...]:
 
 
 def _extract_action_text(raw: str) -> str:
-    """移除已校验的 Action 标记，保留完整 JSON Lines 内容。"""
     return str(raw).split(ACTION_MARKER, 1)[1].strip()

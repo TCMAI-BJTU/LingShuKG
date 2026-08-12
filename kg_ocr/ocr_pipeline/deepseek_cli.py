@@ -1,4 +1,4 @@
-"""DeepSeek-OCR-2 八服务批量处理入口。"""
+"""CLI for DeepSeek-OCR-2 multi-server batch processing."""
 
 import argparse
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -17,21 +17,21 @@ from .processor import parse_pdf
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "所有 PDF 页面均分发到 8080-8087 的 DeepSeek-OCR-2 服务。"
+            "Dispatch every PDF page to DeepSeek-OCR-2 services on ports 8080-8087."
         ),
     )
     parser.add_argument(
         "inputs",
         nargs="*",
         type=Path,
-        help="PDF 文件或目录；不传时处理配置中的默认文件。",
+        help="PDF files or directories; defaults to the configured sample PDF.",
     )
     parser.add_argument(
         "-o",
         "--output-dir",
         type=Path,
         default=deepseek_config.OUTPUT_DIR,
-        help=f"输出根目录，默认：{deepseek_config.OUTPUT_DIR}",
+        help=f"Output root directory (default: {deepseek_config.OUTPUT_DIR})",
     )
     parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument("--start-page", type=int, default=config.START_PAGE)
@@ -51,41 +51,41 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=deepseek_config.PAGE_WORKERS,
         help=(
-            "单个扫描 PDF 的页面线程数，默认："
-            f"{deepseek_config.PAGE_WORKERS}"
+            "Page threads per scanned PDF "
+            f"(default: {deepseek_config.PAGE_WORKERS})"
         ),
     )
     parser.add_argument(
         "--file-workers",
         type=int,
         default=deepseek_config.FILE_WORKERS,
-        help=f"PDF 文件线程数，默认：{deepseek_config.FILE_WORKERS}",
+        help=f"PDF file threads (default: {deepseek_config.FILE_WORKERS})",
     )
     parser.add_argument(
         "--per-server-concurrency",
         type=int,
         default=deepseek_config.PER_SERVER_CONCURRENCY,
         help=(
-            "每个端口的最大在途请求数，默认："
-            f"{deepseek_config.PER_SERVER_CONCURRENCY}"
+            "Max in-flight requests per port "
+            f"(default: {deepseek_config.PER_SERVER_CONCURRENCY})"
         ),
     )
     parser.add_argument(
         "--model",
         default=deepseek_config.MODEL,
-        help=f"服务模型名，默认：{deepseek_config.MODEL}",
+        help=f"Served model name (default: {deepseek_config.MODEL})",
     )
     parser.add_argument(
         "--format",
         choices=("txt", "md"),
         default="txt",
         dest="output_format",
-        help="输出格式，默认：txt",
+        help="Output format (default: txt)",
     )
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="重新处理已经存在的完整输出文件。",
+        help="Reprocess PDFs that already have complete output files.",
     )
     parser.add_argument("--prompt-file", type=Path)
     return parser

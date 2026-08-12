@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-# 清空 proxy 环境变量，避免影响后续 HTTP 请求。
+
+# Clear proxy env vars so later HTTP calls are not redirected.
 for var in [
     "http_proxy",
     "https_proxy",
@@ -39,10 +40,9 @@ DEFAULT_CACHE_NAMESPACE_PATH = BASE_DIR / "state" / "cache_namespaces.json"
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
-    """构建递归目录抽取命令行参数。"""
     llm_defaults = LLMSettings.from_env()
     parser = argparse.ArgumentParser(
-        description="递归处理目录中的 TXT/Markdown，并镜像保存 JSON 结果。"
+        description="Recursively process TXT/Markdown under a directory and mirror JSON results."
     )
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -64,20 +64,19 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--workers",
         type=int,
         default=128,
-        help="普通模式的并发 chunk 数，debug 模式固定为 1",
+        help="Concurrent chunks in normal mode; forced to 1 in --debug",
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="流式输出模型响应和工具轨迹，并保证串行处理",
+        help="Stream model responses and tool traces; forces serial execution",
     )
     return parser
 
 
 def run_directory(args: argparse.Namespace) -> dict:
-    """加载配置并递归运行目录抽取。"""
     if not args.data_dir.is_dir():
-        raise NotADirectoryError(f"数据目录不存在：{args.data_dir}")
+        raise NotADirectoryError(f"Data directory does not exist: {args.data_dir}")
     schema = GraphSchema.from_json_file(args.schema)
     store = GraphStore(DEFAULT_DB_PATH)
     cache = WorkspaceCache(DEFAULT_CACHE_DIR)
@@ -90,7 +89,7 @@ def run_directory(args: argparse.Namespace) -> dict:
         timeout=args.timeout,
         stream=args.debug,
     )
-    # 缓存命名空间只与模型绑定，Schema 调整不会改变断点和来源 ID。
+    # Cache namespace is model-bound only; schema edits do not invalidate checkpoints.
     cache_namespace = load_cache_namespace(
         DEFAULT_CACHE_NAMESPACE_PATH,
         llm_settings.model,
@@ -118,7 +117,6 @@ def run_directory(args: argparse.Namespace) -> dict:
 
 
 def main() -> None:
-    """执行目录抽取并输出 JSON 汇总。"""
     args = build_argument_parser().parse_args()
     result = run_directory(args)
     print(json.dumps(result, ensure_ascii=False, indent=2))

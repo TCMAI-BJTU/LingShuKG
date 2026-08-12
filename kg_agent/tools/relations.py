@@ -11,11 +11,9 @@ from .tool_context import ToolContext
 
 class RelationTools:
     def __init__(self, context: ToolContext) -> None:
-        """绑定当前片段工具上下文。"""
         self.context = context
 
     def list_relations(self, relation_id: str | None = None) -> dict[str, Any]:
-        """列出当前片段全部关系或一个指定关系。"""
         relations = self.context.workspace.relations
         if relation_id is not None:
             relation = relations.get(relation_id)
@@ -32,7 +30,6 @@ class RelationTools:
         relation_type: str,
         obj: EntityDraft,
     ) -> dict[str, Any] | None:
-        """校验关系实体和精确类型约束。"""
         pending = [
             warning
             for warning in self.context.workspace.review_warnings.values()
@@ -58,11 +55,10 @@ class RelationTools:
             return failure("UNKNOWN_RELATION_TYPE", f"未知关系类型：{relation_type}")
         if not rule.allows(subject.entity_type, obj.entity_type):
             return failure("INVALID_RELATION_PAIR", "关系头尾实体类型配对不符合约束")
-        # 这里只验证 Schema 结构；医学事实是否成立仍由 Agent 根据原文审查。
+        # Only Schema structure is checked here; medical facts still need agent review against the text.
         return None
 
     def _find_entity(self, name: str, entity_type: str) -> EntityDraft | None:
-        """按名称和类型定位当前片段中的唯一实体。"""
         return next(
             (
                 entity
@@ -73,7 +69,6 @@ class RelationTools:
         )
 
     def _to_tool_dict(self, relation: RelationDraft) -> dict[str, str]:
-        """将内部 ID 关系转换为面向模型的名称和类型结构。"""
         subject = self.context.workspace.entities[relation.subject_entity_id]
         obj = self.context.workspace.entities[relation.object_entity_id]
         return {
@@ -93,7 +88,7 @@ class RelationTools:
         object_entity_name: str,
         object_entity_type: str,
     ) -> dict[str, Any]:
-        """按实体名称和类型解析节点并添加关系草稿。"""
+        """Resolve nodes by name+type and add a relation draft."""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         subject = self._find_entity(subject_entity_name, subject_entity_type)
@@ -125,7 +120,6 @@ class RelationTools:
         relation_id: str,
         patch: dict[str, Any],
     ) -> dict[str, Any]:
-        """按补丁更新当前工作区中的关系。"""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         relation = self.context.workspace.relations.get(relation_id)
@@ -164,7 +158,6 @@ class RelationTools:
         return success(relation_id=relation_id, status="updated")
 
     def delete_relation(self, relation_id: str) -> dict[str, Any]:
-        """从当前工作区删除指定关系。"""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         if relation_id not in self.context.workspace.relations:

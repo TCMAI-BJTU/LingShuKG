@@ -1,4 +1,4 @@
-"""原生电子排版 PDF 的文本提取与页眉页脚清理。"""
+"""Native PDF text extraction and header/footer cleanup."""
 
 import math
 import logging
@@ -27,7 +27,7 @@ def opencc_available() -> bool:
 
 
 def normalize_margin_line(line: str) -> str:
-    """归一化页眉页脚中的日期、卷期和页码数字。"""
+    """Normalize dates/issue/page numbers in margin lines for matching."""
     normalized = re.sub(r"\d+", "<N>", line.strip())
     return re.sub(r"\s+", "", normalized)
 
@@ -37,7 +37,7 @@ def find_repeated_margin_lines(
     start_page: int,
     end_page: int,
 ) -> set[str]:
-    """统计多页重复的边缘文字，用于删除页眉和页脚。"""
+    """Find repeated edge text used as headers/footers."""
     occurrences: Counter[str] = Counter()
     page_count = end_page - start_page + 1
 
@@ -77,7 +77,7 @@ def is_standalone_page_number(text: str) -> bool:
 
 
 def is_native_heading(line: str) -> bool:
-    """识别原生文本中的短章节标题，避免与后续正文粘连。"""
+    """Detect short section titles so they stay separate from body text."""
     stripped = line.strip()
     if len(stripped) > 50:
         return False
@@ -87,7 +87,7 @@ def is_native_heading(line: str) -> bool:
 
 
 def join_native_block_lines(lines: list[str]) -> str:
-    """合并块内视觉行，但在短章节标题处保留段落边界。"""
+    """Join visual lines in a block; keep short headings as paragraph breaks."""
     sections: list[str] = []
     paragraph_lines: list[str] = []
 
@@ -110,7 +110,7 @@ def should_merge_blocks(
     previous: tuple[float, float, float, float, str],
     current: tuple[float, float, float, float, str],
 ) -> bool:
-    """判断相邻文本块是否为同一自然段的连续视觉行。"""
+    """Whether adjacent blocks are visual wraps of the same paragraph."""
     px0, _py0, px1, py1, previous_text = previous
     cx0, cy0, cx1, _cy1, current_text = current
     vertical_gap = cy0 - py1
@@ -121,7 +121,7 @@ def should_merge_blocks(
     min_width = max(1.0, min(px1 - px0, cx1 - cx0))
     if overlap / min_width < 0.60:
         return False
-    if cx0 > px0 + 10:  # 当前块首行明显缩进，通常是新段落。
+    if cx0 > px0 + 10:  # Clear first-line indent → new paragraph.
         return False
 
     structural_prefixes = (
@@ -143,11 +143,11 @@ def extract_native_page_text(
     page: fitz.Page,
     repeated_margin_lines: set[str],
 ) -> str:
-    """读取原生文本，删除边缘重复内容并合并同段视觉行。"""
+    """Extract native text; drop repeated margins and merge wraps."""
     page_height = page.rect.height
     extracted: list[tuple[float, float, float, float, str]] = []
 
-    # 保留 PDF 自身内容顺序；sort=True 会让双栏内容横向交错。
+    # Keep PDF content order; sort=True interleaves two-column text.
     for block in page.get_text("blocks"):
         if len(block) >= 7 and block[6] != 0:
             continue

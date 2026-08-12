@@ -1,12 +1,11 @@
-"""OCR 流水线的集中配置。"""
+"""Central configuration for the OCR pipeline."""
 
 from pathlib import Path
 
 
-# 项目根目录（LingShuKG/）；后续路径均相对此目录拼接。
+# Project root (LingShuKG/); paths below are relative to this.
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
-# vLLM 服务
 API_BASE = "http://127.0.0.1:8000/v1"
 MODEL = "Qwen3.6-27B"
 API_KEY = "EMPTY"
@@ -16,7 +15,6 @@ DEFAULT_PDF_PATH = (
 )
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output"
 
-# PDF 页面渲染
 RENDER_ZOOM = 3.0
 BLANK_CHECK_ZOOM = 0.5
 BLANK_MARGIN_RATIO = 0.03
@@ -24,20 +22,19 @@ BLANK_INK_RATIO_THRESHOLD = 0.0015
 BLANK_CONTRAST_THRESHOLD = 8.0
 BLANK_BACKGROUND_DELTA = 25
 
-# 原生电子排版检测。判断采取保守策略：不确定或混合版 PDF 走 OCR。
+# Native detection is conservative: uncertain or mixed PDFs go to OCR.
 NATIVE_MIN_TEXT_CHARS = 50
 NATIVE_MIN_TEXT_PAGE_RATIO = 0.80
 FULL_PAGE_IMAGE_MIN_COVERAGE = 0.75
 NATIVE_MAX_FULL_PAGE_IMAGE_RATIO = 0.10
 MARGIN_HEIGHT_RATIO = 0.10
 
-# 即使结构上是原生 PDF，编码异常或版面过于复杂时仍改走视觉 OCR。
+# Even structurally native PDFs may still need OCR (encoding / layout).
 NATIVE_MAX_FULLWIDTH_ASCII_RATIO = 0.10
 NATIVE_MAX_PRIVATE_USE_RATIO = 0.0005
 NATIVE_MAX_MEDIAN_TEXT_BLOCKS = 60
 
-# “原生优先”阶段使用的高置信阈值。宁可把原生 PDF 留给 OCR，
-# 也不直接提取编码异常、混合扫描或版面过于复杂的文件。
+# Strict native-first thresholds: prefer OCR over extracting bad text.
 STRICT_NATIVE_MIN_TEXT_PAGE_RATIO = 0.98
 STRICT_NATIVE_MAX_FULL_PAGE_IMAGE_RATIO = 0.0
 STRICT_NATIVE_MAX_FULLWIDTH_ASCII_RATIO = 0.03
@@ -53,7 +50,6 @@ FILE_WORKERS = 1
 MAX_TOTAL_CONCURRENCY = 128
 MAX_NATIVE_PROCESSES = 64
 
-# Qwen 采样参数。此处保留拆分前文件中的当前值。
 TEMPERATURE = 0.1
 TOP_P = 0.95
 TOP_K = 20

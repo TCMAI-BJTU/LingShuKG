@@ -1,4 +1,4 @@
-"""批量 PDF 处理的命令行入口。"""
+"""CLI entry for batch PDF processing (native extract or Qwen OCR)."""
 
 import argparse
 from concurrent.futures import (
@@ -27,14 +27,7 @@ UNSAFE_MUPDF_WARNING_FRAGMENTS = (
 
 
 def _configure_mupdf_logging() -> None:
-    """隐藏 MuPDF 的底层可恢复警告。
-
-    参数：
-        无。
-
-    返回：
-        无；Python 层异常仍正常抛出。
-    """
+    """Hide recoverable MuPDF warnings; Python exceptions still raise."""
     fitz.TOOLS.mupdf_display_errors(False)
     fitz.TOOLS.mupdf_display_warnings(False)
 
@@ -50,14 +43,7 @@ def _process_native_candidate(
         str,
     ],
 ) -> tuple[bool, Path]:
-    """在独立进程中严格检测并提取单个原生 PDF。
-
-    参数：
-        task: 包含 PDF 路径、输出目录、页码范围和输出参数的任务元组。
-
-    返回：
-        是否已作为高置信原生 PDF 完成提取，以及对应的 PDF 路径。
-    """
+    """Strict-detect and extract one high-confidence native PDF in a process."""
     _configure_mupdf_logging()
     fitz.TOOLS.reset_mupdf_warnings()
     (
@@ -93,15 +79,7 @@ def _process_native_candidate(
 
 
 def find_pdf_files(inputs: list[Path], recursive: bool = False) -> list[Path]:
-    """展开输入路径中的 PDF 文件并去重排序。
-
-    参数：
-        inputs: PDF 文件或目录路径列表。
-        recursive: 是否递归搜索目录。
-
-    返回：
-        解析后的 PDF 绝对路径列表。
-    """
+    """Expand inputs to unique sorted PDF paths."""
     files: set[Path] = set()
     for input_path in inputs:
         path = input_path.expanduser().resolve()
@@ -119,29 +97,21 @@ def find_pdf_files(inputs: list[Path], recursive: bool = False) -> list[Path]:
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
-    """创建 Qwen OCR 的命令行参数解析器。
-
-    参数：
-        无。
-
-    返回：
-        配置完成的参数解析器。
-    """
     parser = argparse.ArgumentParser(
-        description="所有 PDF 页面均使用 Qwen3.6-27B OCR。",
+        description="Run Qwen3.6-27B OCR on every PDF page.",
     )
     parser.add_argument(
         "inputs",
         nargs="*",
         type=Path,
-        help="PDF 文件或目录；不传时处理配置中的默认文件。",
+        help="PDF files or directories; defaults to the configured sample PDF.",
     )
     parser.add_argument(
         "-o",
         "--output-dir",
         type=Path,
         default=config.OUTPUT_DIR,
-        help=f"输出根目录，默认：{config.OUTPUT_DIR}",
+        help=f"Output root directory (default: {config.OUTPUT_DIR})",
     )
     parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument("--start-page", type=int, default=config.START_PAGE)
@@ -156,15 +126,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--workers",
         type=int,
         default=config.MAX_WORKERS,
-        help=f"所有 PDF 共用的页面 OCR 线程数，默认：{config.MAX_WORKERS}",
+        help=f"Shared page OCR threads across PDFs (default: {config.MAX_WORKERS})",
     )
     parser.add_argument(
         "--file-workers",
         type=int,
         default=config.FILE_WORKERS,
         help=(
-            "仅 --native-only 使用的原生 PDF 进程数，"
-            f"默认：{config.FILE_WORKERS}"
+            "Native-PDF process count for --native-only "
+            f"(default: {config.FILE_WORKERS})"
         ),
     )
     parser.add_argument(
@@ -172,18 +142,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
         choices=("txt", "md"),
         default="txt",
         dest="output_format",
-        help="输出文件后缀，默认：txt；不影响 OCR 内容。",
+        help="Output suffix (default: txt); does not change OCR content.",
     )
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="重新处理已经存在的完整输出文件。",
+        help="Reprocess PDFs that already have complete output files.",
     )
     parser.add_argument(
         "--native-only",
         action="store_true",
         help=(
-            "仅处理高置信原生电子排版 PDF；其他文件留给后续 Qwen OCR。"
+            "Only extract high-confidence native PDFs; leave others for Qwen OCR."
         ),
     )
     parser.add_argument("--prompt-file", type=Path)
@@ -191,14 +161,6 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """解析命令行参数并执行原生提取或共享线程池 OCR。
-
-    参数：
-        无。
-
-    返回：
-        无。
-    """
     _configure_mupdf_logging()
     args = build_argument_parser().parse_args()
     if args.workers < 1 or args.file_workers < 1:
@@ -329,14 +291,6 @@ def main() -> None:
         return
 
     def count_pages(pdf_file: Path) -> int:
-        """计算指定页码范围内需要处理的 PDF 页数。
-
-        参数：
-            pdf_file: 待统计的 PDF 路径。
-
-        返回：
-            实际需要处理的页面数量。
-        """
         with fitz.open(pdf_file) as document:
             last_page = (
                 document.page_count
@@ -401,14 +355,6 @@ def main() -> None:
         dynamic_ncols=True,
     ) as progress_bar:
         def show_active_file(pdf_path: Path) -> None:
-            """在总进度条后缀显示最近启动 OCR 的 PDF 文件名。
-
-            参数：
-                pdf_path: 刚开始提交页面任务的 PDF 路径。
-
-            返回：
-                无。
-            """
             filename = pdf_path.name
             max_filename_length = 72
             if len(filename) > max_filename_length:

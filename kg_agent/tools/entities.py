@@ -12,11 +12,9 @@ from .tool_context import ToolContext
 
 class EntityTools:
     def __init__(self, context: ToolContext) -> None:
-        """绑定当前片段工具上下文。"""
         self.context = context
 
     def list_entities(self, entity_id: str | None = None) -> dict[str, Any]:
-        """列出当前片段全部实体或一个指定实体。"""
         entities = self.context.workspace.entities
         if entity_id is not None:
             entity = entities.get(entity_id)
@@ -26,7 +24,7 @@ class EntityTools:
         return success(entities=[entity.to_dict() for entity in entities.values()])
 
     def add_entity(self, name: str, entity_type: str) -> dict[str, Any]:
-        """校验名称证据并向当前工作区添加实体草稿。"""
+        """Validate name evidence and add an entity draft to the workspace."""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         normalized_name = normalize_entity_name(name, entity_type)
@@ -34,7 +32,7 @@ class EntityTools:
             return failure("EMPTY_NAME", "实体名称不能为空")
         if not self.context.schema.has_entity_type(entity_type):
             return failure("UNKNOWN_ENTITY_TYPE", f"未知实体类型：{entity_type}")
-        # 症状群是组合实体，校验每个成员；其他实体仍校验完整名称。
+        # Symptom groups validate each member; other entities validate the full name.
         evidence_error = entity_evidence_error(
             normalized_name,
             entity_type,
@@ -42,7 +40,7 @@ class EntityTools:
         )
         if evidence_error is not None:
             return failure("INVALID_EVIDENCE", evidence_error)
-        # 关系工具通过 name + type 定位节点，因此当前 chunk 内只保留一条。
+        # Relation tools resolve nodes by name+type, so keep one per chunk.
         for entity in self.context.workspace.entities.values():
             if (
                 entity.name == normalized_name
@@ -65,7 +63,6 @@ class EntityTools:
         )
 
     def update_entity(self, entity_id: str, patch: dict[str, Any]) -> dict[str, Any]:
-        """按补丁更新当前工作区中的实体。"""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         entity = self.context.workspace.entities.get(entity_id)
@@ -122,7 +119,7 @@ class EntityTools:
         )
 
     def delete_entity(self, entity_id: str) -> dict[str, Any]:
-        """删除未被当前关系引用的实体。"""
+        """Delete an entity that is not referenced by current relations."""
         if self.context.committed:
             return failure("CHUNK_COMMITTED", "当前片段已经提交")
         if entity_id not in self.context.workspace.entities:

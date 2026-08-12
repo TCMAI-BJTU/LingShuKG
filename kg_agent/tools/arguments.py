@@ -13,7 +13,7 @@ def validate_tool_arguments(
     arguments: Any,
     definitions: list[dict[str, Any]] = TOOL_SPECS,
 ) -> dict[str, Any] | None:
-    """校验模型生成的工具参数名称和基础 JSON 类型。"""
+    """Validate model-generated tool argument names and base JSON types."""
     parameters = next(
         (
             item["function"]["parameters"]
@@ -45,7 +45,6 @@ def _validate_value(
     value: Any,
     definition: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """校验单个工具参数的基础类型、枚举和数值范围。"""
     expected = definition.get("type")
     if expected == "string" and not isinstance(value, str):
         return failure("INVALID_ARGUMENT_TYPE", f"参数 {key} 必须是字符串")
@@ -74,7 +73,6 @@ def _validate_object(
     value: dict[str, Any],
     definition: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """递归校验对象参数的字段、类型和枚举。"""
     properties = definition["properties"]
     missing = set(definition.get("required", [])) - value.keys()
     if missing:

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# 项目根目录（脚本所在目录）；后续路径均相对此目录拼接。
+# Project root (directory of this script).
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PROXY_URL=""

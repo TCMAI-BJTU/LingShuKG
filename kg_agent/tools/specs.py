@@ -12,7 +12,6 @@ def _tool(
     properties: dict[str, Any] | None = None,
     required: list[str] | None = None,
 ) -> dict[str, Any]:
-    """构造一个 OpenAI 兼容函数工具定义。"""
     return {
         "type": "function",
         "function": {
@@ -114,7 +113,7 @@ def build_tool_specs(
     entity_types: list[str],
     predicates: list[str],
 ) -> list[dict[str, Any]]:
-    """构建带当前 Schema 参数类型和枚举值的工具定义。"""
+    """Build tool definitions with Schema parameter types and enums."""
     definitions = deepcopy(TOOL_SPECS)
     by_name = {
         item["function"]["name"]: item["function"]["parameters"]["properties"]

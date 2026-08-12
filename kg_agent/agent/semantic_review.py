@@ -33,7 +33,7 @@ class SemanticReviewer(Protocol):
         self,
         entities: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """结合各实体局部上下文批量审查类型并在协议失败时内部重试。"""
+        """Batch-review entity types with local context; retry internally on protocol failure."""
         ...
 
 
@@ -47,7 +47,6 @@ class ContextualSemanticReviewer:
         cache_namespace: str = "",
         max_review_attempts: int = ENTITY_REVIEW_MAX_ATTEMPTS,
     ) -> None:
-        """创建每次使用全新对话的语义审查器。"""
         if max_review_attempts < 1:
             raise ValueError("max_review_attempts 必须大于或等于 1")
         self.client = client
@@ -56,7 +55,7 @@ class ContextualSemanticReviewer:
         self.review_cache = review_cache
         self.cache_namespace = cache_namespace
         self.max_review_attempts = max_review_attempts
-        # 注册表只短暂持锁；实际模型请求仅锁定相同名称和上下文。
+        # Hold the registry lock briefly; model calls lock only matching name+context keys.
         self._entity_review_lock_guard = Lock()
         self._entity_review_locks: dict[
             tuple[str, str],
@@ -67,7 +66,7 @@ class ContextualSemanticReviewer:
         self,
         entities: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """结合各术语局部上下文和 Schema 批量判断实体类型。"""
+        """Batch-classify entity types from local term context and Schema."""
         with self._acquire_entity_review_locks(entities):
             return self._review_entity_types_locked(entities)
 
@@ -76,7 +75,7 @@ class ContextualSemanticReviewer:
         self,
         entities: list[dict[str, str]],
     ) -> Iterator[None]:
-        """按名称和上下文锁定本批实体，并在使用结束后回收锁条目。"""
+        """Lock this batch by name+context and reclaim lock entries afterward."""
         keys = sorted({
             (entity["name"], entity["context"])
             for entity in entities
@@ -92,7 +91,7 @@ class ContextualSemanticReviewer:
                 entries.append(entry)
         acquired: list[_ReviewLockEntry] = []
         try:
-            # 固定顺序获取多个键，可避免两个重叠批次互相等待形成死锁。
+            # Acquire keys in sorted order to avoid deadlocks between overlapping batches.
             for entry in entries:
                 entry.lock.acquire()
                 acquired.append(entry)
@@ -110,7 +109,7 @@ class ContextualSemanticReviewer:
         self,
         entities: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """在持有缓存锁时复用相同名称与上下文的审查结果。"""
+        """While holding cache locks, reuse reviews for matching name+context."""
         cached = {
             (entity["name"], entity["context"]): self._load_entity_review(
                 entity["name"],
@@ -118,7 +117,7 @@ class ContextualSemanticReviewer:
             )
             for entity in entities
         }
-        # 相同名称只有在局部上下文也一致时才复用审查，避免多义词跨语境污染。
+        # Reuse reviews only when name and local context match (avoid cross-sense pollution).
         pending = list(
             {
                 (entity["name"], entity["context"]): entity
@@ -132,7 +131,7 @@ class ContextualSemanticReviewer:
                 break
             attempt_errors: list[dict[str, Any]] = []
             attempt_outputs: list[dict[str, Any]] = []
-            # 每次请求最多审查 5 个实体，避免过长响应偏离 JSONL 协议。
+            # Cap each review request at 5 entities to keep JSONL responses on protocol.
             for batch in _review_batches(pending):
                 requested = self._request_entity_type_reviews(
                     batch,
@@ -184,7 +183,7 @@ class ContextualSemanticReviewer:
         entities: list[dict[str, str]],
         retry: bool = False,
     ) -> dict[str, Any]:
-        """将未缓存实体及其局部上下文合并为一次独立审查请求。"""
+        """Merge uncached entities and local contexts into one independent review request."""
         retry_instruction = (
             "这是协议错误后的内部重试。上一轮输出不是严格 JSONL。"
             "本轮尤其禁止使用方括号包裹结果，禁止在行末添加逗号。"
@@ -225,7 +224,7 @@ class ContextualSemanticReviewer:
                 "role": "user",
                 "content": json.dumps(
                     {
-                        # 不传当前类型，避免审查模型顺着抽取结果进行确认。
+                        # Do not send the current type so the reviewer cannot rubber-stamp the extractor.
                         "entities": [
                             {
                                 "name": entity["name"],
@@ -388,7 +387,6 @@ class ContextualSemanticReviewer:
         name: str,
         context: str,
     ) -> dict[str, Any] | None:
-        """读取与当前流水线、名称和局部上下文绑定的审查缓存。"""
         if self.review_cache is None:
             return None
         return self.review_cache.load_entity_review(
@@ -402,7 +400,6 @@ class ContextualSemanticReviewer:
         review: dict[str, Any],
         context: str,
     ) -> None:
-        """按名称与局部上下文保存可复用的实体审查结果。"""
         if self.review_cache is None:
             return
         self.review_cache.save_entity_review(
@@ -421,7 +418,6 @@ class ContextualSemanticReviewer:
         )
 
     def _complete(self, messages: list[dict[str, str]]) -> str:
-        """调用无片段上下文的独立对话并返回原始文本。"""
         if self.debug:
             print("✿REVIEW_PROMPT✿", flush=True)
             for message in messages:
@@ -432,7 +428,6 @@ class ContextualSemanticReviewer:
 
 
 def _entity_catalog(schema: GraphSchema) -> dict[str, dict[str, Any]]:
-    """构造不包含片段原文的实体类型说明。"""
     return {
         entity_type: {
             "description": guidance.description,
@@ -446,7 +441,6 @@ def _entity_catalog(schema: GraphSchema) -> dict[str, dict[str, Any]]:
 def _review_jsonl_errors(
     errors: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """将通用 JSONL 错误转换为审查协议错误代码。"""
     code_map = {
         "INVALID_JSON_OBJECT": "INVALID_REVIEW_ITEM",
         "INVALID_JSON": "INVALID_REVIEW_JSON",
@@ -460,7 +454,7 @@ def _review_jsonl_errors(
 
 
 def _model_output(raw: str) -> dict[str, Any]:
-    """保留独立审查原始输出的有界前缀和完整长度。"""
+    """Keep a bounded prefix of raw independent-review output plus full length."""
     return {
         "content": raw[:REVIEW_OUTPUT_LIMIT],
         "char_count": len(raw),
@@ -471,7 +465,7 @@ def _model_output(raw: str) -> dict[str, Any]:
 def _review_batches(
     entities: list[dict[str, str]],
 ) -> list[list[dict[str, str]]]:
-    """将待审查实体固定拆成每批最多 5 个的请求。"""
+    """Split pending entities into fixed batches of at most 5."""
     return [
         entities[offset:offset + ENTITY_REVIEW_BATCH_SIZE]
         for offset in range(0, len(entities), ENTITY_REVIEW_BATCH_SIZE)
@@ -484,7 +478,6 @@ def _final_review_failure(
     outputs: list[dict[str, Any]],
     attempt: int,
 ) -> dict[str, Any]:
-    """构造审查器内部重试仍失败后的精简错误摘要。"""
     error_counts: dict[str, int] = {}
     for error in errors:
         code = str(error["code"])
@@ -515,7 +508,7 @@ def _materialize_entity_review(
     entity: dict[str, str],
     cached: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """将按名称缓存的推荐类型转换为针对当前类型的审查结果。"""
+    """Materialize name-cached recommended types into per-current-type review results."""
     if cached is None:
         raise ValueError("实体类型审查结果缺失")
     should_extract = cached["should_extract"]
