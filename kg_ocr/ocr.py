@@ -1,4 +1,4 @@
-"""使用本地 vLLM 部署的 DeepSeek-OCR-2 解析 PDF。"""
+"""Parse PDFs with a locally deployed DeepSeek-OCR-2 vLLM service."""
 from __future__ import annotations
 
 import base64
@@ -15,25 +15,26 @@ from pathlib import Path
 import fitz  # pymupdf
 from openai import OpenAI
 
-# vLLM 服务
+# Project root (LingShuKG/); paths below are relative to this.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
 API_BASE = "http://127.0.0.1:8080/v1"
 MODEL = "deepseek-ocr-2"
 API_KEY = "EMPTY"
 
-PDF_PATH = Path(
-    "/home/huarui/pythonProject/data_generate/灵枢数据补充/知识图谱智能体/data/河南书籍/"
-    "129、1499类经图翼、类经附翼_可搜索.pdf"
+PDF_PATH = (
+    ROOT_DIR / "data" / "成人瓣膜性心脏病围术期管理专家共识(2025年).pdf"
 )
 OUTPUT_DIR = Path(__file__).resolve().parent / "output" / "ocr"
 
-# PDF 渲染分辨率（约 144 dpi）；过大可能触发 vLLM 图像 token 上限
+# ~144 dpi; higher zoom can hit vLLM image-token limits.
 RENDER_ZOOM = 4.0
-# 空白页检测使用较低分辨率，避免为无内容页面执行完整渲染和模型推理。
+# Low-res blank check avoids full render + model inference on empty pages.
 BLANK_CHECK_ZOOM = 0.5
 BLANK_INK_RATIO_THRESHOLD = 0.0015
 BLANK_CONTRAST_THRESHOLD = 8.0
 BLANK_BACKGROUND_DELTA = 25
-# None 表示处理全部页面；调试时可设为例如 3
+# None = all pages; set e.g. 3 for debugging.
 MAX_PAGES: int | None = None
 
 OCR_PROMPT = "<image>\nConvert the document to markdown."
@@ -51,12 +52,12 @@ HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def truncate_degenerate_repetition(text: str) -> str:
-    """截断模型生成的周期性重复或低字符多样性异常长尾。"""
+    """Truncate periodic / low-diversity model hallucination tails."""
     for match in REPEATED_BLOCK_PATTERN.finditer(text):
         if len(match.group(0)) >= 80:
             return text[: match.start()].rstrip(" ，,。；;、\n\t")
 
-    # 类似“以、易、人”少数字符持续数百次，但循环并非逐字完全一致。
+    # Few Han chars repeating for hundreds of steps without exact n-gram loops.
     han_positions = [
         (match.start(), match.group(0)) for match in HAN_PATTERN.finditer(text)
     ]
@@ -78,7 +79,7 @@ def truncate_degenerate_repetition(text: str) -> str:
 
 
 def clean_ocr_output(text: str) -> str:
-    """清除 DeepSeek-OCR-2 输出中的版面定位标签及坐标。"""
+    """Strip DeepSeek-OCR-2 layout grounding tags and coordinates."""
     text = GROUNDING_TAG_PATTERN.sub("", text)
     text = GROUNDING_COORD_PATTERN.sub("", text)
     text = truncate_degenerate_repetition(text)
@@ -88,7 +89,7 @@ def clean_ocr_output(text: str) -> str:
 
 
 def _ensure_no_proxy() -> None:
-    """本地 8080 走直连，避免被代理劫持。"""
+    """Bypass proxy for localhost:8080."""
     host = "127.0.0.1,localhost"
     for key in ("NO_PROXY", "no_proxy"):
         current = os.environ.get(key, "")
@@ -111,7 +112,7 @@ def pdf_page_to_png_bytes(page: fitz.Page, zoom: float = RENDER_ZOOM) -> bytes:
 
 
 def is_blank_page(page: fitz.Page) -> bool:
-    """通过低分辨率灰度图判断页面是否基本空白。"""
+    """Detect near-blank pages via low-res grayscale ink/contrast."""
     rect = page.rect
     margin_x = rect.width * 0.03
     margin_y = rect.height * 0.03
@@ -132,7 +133,7 @@ def is_blank_page(page: fitz.Page) -> bool:
     if total == 0:
         return True
 
-    # 用第 90 百分位灰度估计纸张背景，兼容偏黄、偏灰的扫描页面。
+    # 90th-percentile gray as paper background (handles yellowed/gray scans).
     target = total * 0.9
     cumulative = 0
     background = 255
@@ -180,7 +181,7 @@ def ocr_image_png(client: OpenAI, png_bytes: bytes) -> str:
         top_p=0.95,
         extra_body={
             "skip_special_tokens": False,
-            # 配合服务端 NGramPerReqLogitsProcessor；若未启用该 processor 可去掉
+            # Requires server-side NGramPerReqLogitsProcessor; omit if unused.
             "vllm_xargs": {
                 "ngram_size": 20,
                 "window_size": 90,
@@ -204,7 +205,6 @@ def parse_pdf(
     out_dir = Path(output_dir) if output_dir else OUTPUT_DIR / pdf_path.stem
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path = out_dir / f"{pdf_path.stem}.md"
-    # 每次运行先清空目标文件，之后将各页 OCR 结果依次追加到同一文件。
     md_path.write_text("", encoding="utf-8")
 
     client = make_client()

@@ -3,15 +3,16 @@
 from pathlib import Path
 
 
+# 项目根目录（LingShuKG/）；后续路径均相对此目录拼接。
+ROOT_DIR = Path(__file__).resolve().parents[2]
+
 # vLLM 服务
 API_BASE = "http://127.0.0.1:8000/v1"
 MODEL = "Qwen3.6-27B"
 API_KEY = "EMPTY"
 
-DEFAULT_PDF_PATH = Path(
-    "/home/huarui/pythonProject/data_generate/灵枢数据补充/知识图谱智能体/"
-    "data/冠心病数据/冠心病搜集数据_V260721/1-指南/01_纯西医/"
-    "瓣膜病/场景_围术期/成人瓣膜性心脏病围术期管理专家共识(2025年).pdf"
+DEFAULT_PDF_PATH = (
+    ROOT_DIR / "data" / "成人瓣膜性心脏病围术期管理专家共识(2025年).pdf"
 )
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output"
 
