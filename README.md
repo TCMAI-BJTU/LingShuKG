@@ -1,6 +1,10 @@
 # LingShuKG
 
-Build a Traditional Chinese Medicine knowledge graph from PDF literature: use `kg_ocr` to convert PDFs to TXT, then run `kg_agent` to extract entities and relations.
+This repository provides the literature-based knowledge extraction pipeline used in the construction of LingShu, a large-scale symptom-centric contextualized knowledge graph integrating Traditional Chinese Medicine (TCM) and modern biomedicine.
+
+The LingShu knowledge graph can be explored through the online platform: **http://www.tcmkg.com/**
+
+The pipeline converts TCM literature from PDF to text using `kg_ocr` and extracts ontology-constrained entities, triples, and contextualized quadruples using the `kg_agent` extraction agent.
 
 ## Pipeline
 
@@ -99,3 +103,9 @@ Exports `state/kg.sqlite` to `csv_output/` by default (`sources.csv` / `entities
 ## More detail
 
 OCR module details, concurrency settings, and native-extraction strategy: [`kg_ocr/README.md`](kg_ocr/README.md).
+
+## Data Availability
+
+The LingShu web platform is available for online exploration. The complete dataset associated with the manuscript will be made publicly available for download upon acceptance.
+
+The LingShu knowledge graph can be explored through the online platform: **http://www.tcmkg.com/**
